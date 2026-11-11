@@ -31,6 +31,23 @@ example `npm run test:client`, `npm run test:extension`, and `npm run test:serve
 Copy the relevant `.env.example` to `.env` only when local configuration is needed. Never
 commit the resulting `.env` file.
 
+## Build diagnostics
+
+The server exposes public build metadata at `GET /api/v1/meta/version`: its package version,
+full Git commit SHA (or `unknown` when Git metadata is unavailable), and UTC build time.
+The server generates this metadata before dev, test, type-check, and build commands. Client
+and extension builds embed equivalent metadata; the extension reads its installed version
+from its Manifest V3 runtime. When the popup opens the PWA, it reports its extension build
+identity in the URL so the PWA's **About & diagnostics** page can show the independently
+installed version.
+
+Set `VITE_TALENTFLY_API_URL` in `client/.env` to the full version endpoint URL for the
+diagnostics page to query the server. Configure `CLIENT_ORIGINS` in `server/.env` as a
+comma-separated list of exact browser origins allowed to call the API (the default is
+`http://localhost:5173`). A missing endpoint configuration or failed request is shown
+explicitly in diagnostics; server version requests do not include local resume or report
+data.
+
 ## Development
 
 ```bash

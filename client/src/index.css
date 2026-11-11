@@ -694,6 +694,79 @@ h1 {
   background: #f0eef9;
 }
 
+.diagnostics-intro {
+  max-width: 720px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.diagnostic-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.diagnostic-card h2 {
+  margin-bottom: 14px;
+  font-size: 15px;
+}
+
+.build-details {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.build-details > div {
+  display: grid;
+  gap: 4px;
+}
+
+.build-details dt,
+.diagnostic-source {
+  color: #8a91a4;
+  font-size: 10px;
+}
+
+.build-details dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #515c76;
+  font-size: 11px;
+}
+
+.build-details code {
+  font-size: 10px;
+}
+
+.diagnostic-status {
+  margin: 0;
+  color: #788198;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.diagnostic-source {
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .diagnostics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (min-width: 1500px) {
   .page-content {
     padding-top: 46px;
@@ -924,6 +997,10 @@ h1 {
   .empty-state {
     min-height: 330px;
     padding: 28px 19px;
+  }
+
+  .diagnostics-grid {
+    grid-template-columns: 1fr;
   }
 
   .empty-state h2 {

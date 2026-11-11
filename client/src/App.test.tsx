@@ -27,4 +27,15 @@ describe('PWA workspace shell', () => {
 
     expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'talentfly:apply-update' }));
   });
+
+  it('shows bundled build information and explains when no extension build is reported', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('link', { name: 'About & diagnostics' }));
+
+    expect(screen.getByRole('heading', { name: 'About & diagnostics', level: 1 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'PWA build' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Server build' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Chrome extension' })).toBeTruthy();
+    expect(screen.getByText(/No extension build has been reported/)).toBeTruthy();
+  });
 });

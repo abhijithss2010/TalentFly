@@ -171,6 +171,12 @@ body {
   font-size: 10px;
 }
 
+.footer-build {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .footer-dot {
   width: 7px;
   height: 7px;

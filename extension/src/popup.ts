@@ -1,4 +1,5 @@
 import './popup.css';
+import { getExtensionBuildInfo } from './build-info';
 import { resolvePwaOrigin } from './pwa-origin';
 import { renderPopup } from './popup-ui';
 
@@ -10,4 +11,4 @@ if (!root) {
 }
 
 const pwaOrigin = resolvePwaOrigin(import.meta.env.VITE_TALENTFLY_PWA_ORIGIN, import.meta.env.MODE);
-renderPopup(root, pwaOrigin);
+renderPopup(root, pwaOrigin, getExtensionBuildInfo());

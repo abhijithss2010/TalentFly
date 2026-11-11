@@ -1,3 +1,5 @@
+import type { BuildInfo } from './build-info';
+
 function createElement<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
   className: string,
@@ -9,7 +11,7 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-export function renderPopup(root: HTMLElement, pwaOrigin: string) {
+export function renderPopup(root: HTMLElement, pwaOrigin: string, buildInfo: BuildInfo) {
   const header = createElement('header', 'popup-header');
   const logo = createElement('img', 'popup-logo');
   logo.src = '/talentfly-mark.svg';
@@ -51,7 +53,12 @@ export function renderPopup(root: HTMLElement, pwaOrigin: string) {
   content.append(captureCard);
 
   const openLink = createElement('a', 'open-pwa', 'Open TalentFly');
-  openLink.href = `${pwaOrigin}/#dashboard`;
+  const pwaUrl = new URL(pwaOrigin);
+  pwaUrl.searchParams.set('extensionVersion', buildInfo.version);
+  pwaUrl.searchParams.set('extensionCommit', buildInfo.commit);
+  pwaUrl.searchParams.set('extensionBuiltAt', buildInfo.builtAt);
+  pwaUrl.hash = 'dashboard';
+  openLink.href = pwaUrl.toString();
   openLink.target = '_blank';
   openLink.rel = 'noopener noreferrer';
   const arrow = createElement('span', '', '→');
@@ -61,7 +68,11 @@ export function renderPopup(root: HTMLElement, pwaOrigin: string) {
   const footer = createElement('footer', 'popup-footer');
   footer.append(
     createElement('span', 'footer-dot'),
-    createElement('span', '', 'Your workspace stays on this device'),
+    createElement(
+      'span',
+      'footer-build',
+      `Your workspace stays on this device · Extension v${buildInfo.version} (${buildInfo.commit})`,
+    ),
   );
 
   root.replaceChildren(header, content, openLink, footer);

@@ -33,6 +33,7 @@ Commit titles are examples, not commits already made. Keep each change small eno
 - **#2 branded PWA shell:** committed as `c20437b` (`feat(client): add branded desktop-style PWA shell`); all workspace tests, lint, type-check, build, and browser smoke checks passed.
 - **#3 extension popup and package:** implemented and validated in this working tree; ready to commit after final checks.
 - **#4 tested workspace and release workflows:** implemented in this working tree; CI validates all workspaces, and protected manual workflows build Hosting and extension release artifacts.
+- **#5 commit-based build versions:** implemented and validated in this working tree; the public server endpoint and PWA diagnostics show the independent client, server, and reported extension builds.
 
 ### Milestone 0 — establish the project, app shells, and delivery pipeline first
 

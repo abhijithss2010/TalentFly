@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { createBuildInfo } from '../scripts/build-info.mjs';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
@@ -30,5 +32,10 @@ function serviceWorkerPlugin(): Plugin {
 }
 
 export default defineConfig({
+  define: {
+    __TALENTFLY_BUILD_INFO__: JSON.stringify(
+      createBuildInfo(fileURLToPath(new URL('./package.json', import.meta.url))),
+    ),
+  },
   plugins: [react(), serviceWorkerPlugin()],
 });

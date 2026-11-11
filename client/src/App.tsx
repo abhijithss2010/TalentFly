@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
+import { DiagnosticsPage } from './DiagnosticsPage';
 
-type PageId = 'dashboard' | 'resumes' | 'history' | 'settings';
+type PageId = 'dashboard' | 'resumes' | 'history' | 'settings' | 'diagnostics';
 
 const navigation: { id: PageId; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Overview', icon: 'O' },
   { id: 'resumes', label: 'Resume library', icon: 'R' },
   { id: 'history', label: 'Comparisons', icon: 'C' },
   { id: 'settings', label: 'Settings', icon: 'S' },
+  { id: 'diagnostics', label: 'About & diagnostics', icon: 'D' },
 ];
 
 const pageTitles: Record<PageId, string> = {
@@ -14,6 +16,7 @@ const pageTitles: Record<PageId, string> = {
   resumes: 'Resume library',
   history: 'Comparisons',
   settings: 'Settings',
+  diagnostics: 'About & diagnostics',
 };
 
 function pageFromHash(): PageId {
@@ -309,6 +312,7 @@ export function App() {
               icon="S"
             />
           )}
+          {page === 'diagnostics' && <DiagnosticsPage />}
         </main>
       </div>
     </div>
