@@ -14,12 +14,6 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "fflate": "^0.8.2",
-    "jsdom": "^29.1.1",
-    "sharp": "^0.35.5",
-    "vite": "^8.3.8"
-  },
-  "devDependencies": {
     "fflate": "^0.8.3",
     "jsdom": "^29.1.1",
     "sharp": "^0.35.5",

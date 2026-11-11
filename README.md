@@ -66,3 +66,26 @@ VITE_TALENTFLY_PWA_ORIGIN=https://your-talentfly-host.example npm run package:ex
 The resulting versioned ZIP is written to the ignored `extension/artifacts/` directory.
 The package script includes only built extension files, excludes source maps and local
 credential files, and uses stable file ordering/timestamps for repeatable output.
+
+## CI and release workflows
+
+Every pull request and push to `main` runs tests, lint, type-checking, and builds separately
+for all three workspaces, plus a repository secret scan. Once those checks pass, CI uploads
+the PWA build and a versioned extension ZIP as validation artifacts. The CI extension ZIP
+uses the reserved `.invalid` origin and is not suitable for installation or release.
+
+Production actions are manual and do not run for pull requests:
+
+- **Deploy PWA to Firebase Hosting** (`.github/workflows/deploy-hosting.yml`) builds and
+  deploys Hosting from `main`. Configure a protected GitHub environment named `production`
+  with required reviewers, a `FIREBASE_PROJECT_ID` environment variable, and a
+  `FIREBASE_SERVICE_ACCOUNT` environment secret containing a Firebase deploy service
+  account's JSON credentials.
+- **Package Chrome extension release** (`.github/workflows/release-extension.yml`) runs
+  from `main` and uploads a versioned ZIP for manual Chrome Web Store submission. Configure
+  a protected `extension-release` environment with required reviewers and the
+  `TALENTFLY_PWA_ORIGIN` environment variable set to the production HTTPS origin. Store
+  upload/publishing credentials are not configured, so publishing remains a manual action.
+
+Restrict both environments to the `main` branch and require approval before use. CI jobs
+have read-only repository permissions and do not receive production credentials.

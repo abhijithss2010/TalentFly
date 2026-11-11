@@ -32,6 +32,7 @@ Commit titles are examples, not commits already made. Keep each change small eno
 - **#1 workspace scaffold:** committed as `c4a33ea` (`first commit`).
 - **#2 branded PWA shell:** committed as `c20437b` (`feat(client): add branded desktop-style PWA shell`); all workspace tests, lint, type-check, build, and browser smoke checks passed.
 - **#3 extension popup and package:** implemented and validated in this working tree; ready to commit after final checks.
+- **#4 tested workspace and release workflows:** implemented in this working tree; CI validates all workspaces, and protected manual workflows build Hosting and extension release artifacts.
 
 ### Milestone 0 — establish the project, app shells, and delivery pipeline first
 
