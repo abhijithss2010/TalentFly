@@ -1,9 +1,316 @@
-import { APP_NAME } from './app-info';
+import { useEffect, useState } from 'react';
+
+type PageId = 'dashboard' | 'resumes' | 'history' | 'settings';
+
+const navigation: { id: PageId; label: string; icon: string }[] = [
+  { id: 'dashboard', label: 'Overview', icon: 'O' },
+  { id: 'resumes', label: 'Resume library', icon: 'R' },
+  { id: 'history', label: 'Comparisons', icon: 'C' },
+  { id: 'settings', label: 'Settings', icon: 'S' },
+];
+
+const pageTitles: Record<PageId, string> = {
+  dashboard: 'Overview',
+  resumes: 'Resume library',
+  history: 'Comparisons',
+  settings: 'Settings',
+};
+
+function pageFromHash(): PageId {
+  const page = window.location.hash.slice(1);
+  return navigation.find((item) => item.id === page)?.id ?? 'dashboard';
+}
+
+function BrandMark({ className = '' }: { className?: string }) {
+  return (
+    <img
+      className={`brand-mark ${className}`}
+      src="/talentfly-mark.svg"
+      alt=""
+      aria-hidden="true"
+    />
+  );
+}
+
+function EmptyState({
+  eyebrow,
+  title,
+  description,
+  icon,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  icon: string;
+}) {
+  return (
+    <section className="empty-state" aria-labelledby="empty-state-title">
+      <div className="empty-state-icon" aria-hidden="true">
+        {icon}
+      </div>
+      <p className="eyebrow">{eyebrow}</p>
+      <h2 id="empty-state-title">{title}</h2>
+      <p className="muted-copy">{description}</p>
+    </section>
+  );
+}
+
+function Dashboard({ onNavigate }: { onNavigate: (page: PageId) => void }) {
+  return (
+    <>
+      <section className="welcome-panel">
+        <div className="welcome-copy">
+          <p className="eyebrow">YOUR CAREER WORKSPACE</p>
+          <h2>Make every application more intentional.</h2>
+          <p>
+            Keep your resumes close. When you find a role worth pursuing, see how your
+            experience lines up.
+          </p>
+          <button className="button button-primary" onClick={() => onNavigate('resumes')}>
+            Set up your resume library <span aria-hidden="true">→</span>
+          </button>
+        </div>
+        <div className="welcome-art" aria-hidden="true">
+          <BrandMark className="welcome-mark" />
+          <span className="art-orbit orbit-one" />
+          <span className="art-orbit orbit-two" />
+          <span className="art-spark spark-one">✦</span>
+          <span className="art-spark spark-two">✦</span>
+        </div>
+      </section>
+
+      <section className="stat-grid" aria-label="Workspace summary">
+        <article className="summary-card">
+          <span className="summary-icon resume-icon" aria-hidden="true">
+            R
+          </span>
+          <p className="summary-label">Resumes saved</p>
+          <p className="summary-value">—</p>
+          <button className="text-button" onClick={() => onNavigate('resumes')}>
+            Open library <span aria-hidden="true">→</span>
+          </button>
+        </article>
+        <article className="summary-card">
+          <span className="summary-icon comparison-icon" aria-hidden="true">
+            C
+          </span>
+          <p className="summary-label">Comparisons</p>
+          <p className="summary-value">—</p>
+          <button className="text-button" onClick={() => onNavigate('history')}>
+            View history <span aria-hidden="true">→</span>
+          </button>
+        </article>
+        <article className="summary-card privacy-card">
+          <span className="privacy-indicator" aria-hidden="true" />
+          <p className="summary-label">Your data stays yours</p>
+          <p className="privacy-copy">
+            Your resumes and reports stay in this browser. You choose what to share with an
+            AI provider.
+          </p>
+          <button className="text-button" onClick={() => onNavigate('settings')}>
+            Review settings <span aria-hidden="true">→</span>
+          </button>
+        </article>
+      </section>
+
+      <section className="activity-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">YOUR WORK</p>
+            <h2>Recent comparisons</h2>
+          </div>
+          <button className="text-button" onClick={() => onNavigate('history')}>
+            View all <span aria-hidden="true">→</span>
+          </button>
+        </div>
+        <div className="activity-empty">
+          <span className="activity-empty-icon" aria-hidden="true">
+            ✦
+          </span>
+          <p>No comparisons yet</p>
+          <span>Your future role-fit reports will show up here.</span>
+        </div>
+      </section>
+    </>
+  );
+}
 
 export function App() {
+  const [page, setPage] = useState<PageId>(pageFromHash);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [offlineReady, setOfflineReady] = useState(false);
+  const [pwaError, setPwaError] = useState<string | null>(null);
+
+  const navigateTo = (nextPage: PageId) => {
+    if (window.location.hash !== `#${nextPage}`) {
+      window.history.pushState(null, '', `#${nextPage}`);
+    }
+    setPage(nextPage);
+  };
+
+  useEffect(() => {
+    const syncPage = () => setPage(pageFromHash());
+    const showUpdate = () => setUpdateAvailable(true);
+    const showOfflineReady = () => setOfflineReady(true);
+    const showPwaError = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      setPwaError(typeof detail === 'string' ? detail : 'Offline support could not be enabled.');
+    };
+
+    window.addEventListener('hashchange', syncPage);
+    window.addEventListener('popstate', syncPage);
+    window.addEventListener('talentfly:update-available', showUpdate);
+    window.addEventListener('talentfly:offline-ready', showOfflineReady);
+    window.addEventListener('talentfly:pwa-error', showPwaError);
+
+    return () => {
+      window.removeEventListener('hashchange', syncPage);
+      window.removeEventListener('popstate', syncPage);
+      window.removeEventListener('talentfly:update-available', showUpdate);
+      window.removeEventListener('talentfly:offline-ready', showOfflineReady);
+      window.removeEventListener('talentfly:pwa-error', showPwaError);
+    };
+  }, []);
+
   return (
-    <main>
-      <h1>{APP_NAME}</h1>
-    </main>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <a className="brand-lockup" href="#dashboard" aria-label="TalentFly home">
+          <BrandMark />
+          <span className="brand-name">Talent<span>Fly</span></span>
+        </a>
+
+        <div className="workspace-label">WORKSPACE</div>
+        <nav className="primary-nav" aria-label="Primary navigation">
+          {navigation.map((item) => (
+            <a
+              className={`nav-link${page === item.id ? ' nav-link-active' : ''}`}
+              href={`#${item.id}`}
+              key={item.id}
+              aria-current={page === item.id ? 'page' : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateTo(item.id);
+              }}
+            >
+              <span className={`nav-icon nav-icon-${item.id}`} aria-hidden="true">
+                {item.icon}
+              </span>
+              <span>{item.label}</span>
+              {item.id === 'resumes' && <span className="nav-count">0</span>}
+            </a>
+          ))}
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="local-status">
+            <span className="status-dot" />
+            <div>
+              <strong>Private by design</strong>
+              <span>Stored on this device</span>
+            </div>
+          </div>
+          <div className="sidebar-footer">
+            <BrandMark className="footer-mark" />
+            <span>Thoughtful moves, made yours.</span>
+          </div>
+        </div>
+      </aside>
+
+      <div className="workspace">
+        <header className="topbar">
+          <div className="breadcrumb">
+            <span>Workspace</span>
+            <span aria-hidden="true">/</span>
+            <strong>{pageTitles[page]}</strong>
+          </div>
+          <div className="topbar-right">
+            {offlineReady && (
+              <span className="offline-badge">
+                <span className="status-dot" />
+                Ready offline
+              </span>
+            )}
+            <span className="device-badge">
+              <span className="device-dot" />
+              Local workspace
+            </span>
+            <div className="avatar" aria-label="Guest workspace">
+              G
+            </div>
+          </div>
+        </header>
+
+        <main className="page-content">
+          {updateAvailable && (
+            <div className="update-banner" role="status">
+              <span>A new version of TalentFly is ready.</span>
+              <button
+                className="text-button"
+                onClick={() => window.dispatchEvent(new Event('talentfly:apply-update'))}
+              >
+                Update now
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Dismiss update notice"
+                onClick={() => setUpdateAvailable(false)}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          {pwaError && (
+            <div className="offline-error" role="alert">
+              <span>{pwaError}</span>
+              <button
+                className="icon-button"
+                aria-label="Dismiss offline warning"
+                onClick={() => setPwaError(null)}
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          <div className="page-title-row">
+            <div>
+              <p className="eyebrow">TALENTFLY WORKSPACE</p>
+              <h1>{pageTitles[page]}</h1>
+            </div>
+            <span className="local-only-label">
+              <span className="status-dot" />
+              Your workspace is local
+            </span>
+          </div>
+
+          {page === 'dashboard' && <Dashboard onNavigate={navigateTo} />}
+          {page === 'resumes' && (
+            <EmptyState
+              eyebrow="YOUR LIBRARY"
+              title="Your next chapter starts here."
+              description="Add your resumes to keep tailored versions organized in one private workspace. File uploads are coming in the next step."
+              icon="R"
+            />
+          )}
+          {page === 'history' && (
+            <EmptyState
+              eyebrow="YOUR PROGRESS"
+              title="Your comparison history will live here."
+              description="Each role you explore will have its own saved report, ready whenever you want to revisit it."
+              icon="C"
+            />
+          )}
+          {page === 'settings' && (
+            <EmptyState
+              eyebrow="YOUR PREFERENCES"
+              title="Your workspace, your choices."
+              description="Provider selection, encrypted API key storage, and data controls will be configured here."
+              icon="S"
+            />
+          )}
+        </main>
+      </div>
+    </div>
   );
 }

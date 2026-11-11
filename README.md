@@ -38,5 +38,12 @@ npm run dev:client
 npm run dev:server
 ```
 
-The extension workspace can be built with `npm run build:extension`; its browser manifest
-and packaging workflow will be completed in a later implementation step.
+The client is an installable PWA. Its branded shell and static assets are precached for
+offline startup after the first visit; API calls and user/provider data are not added to a
+service-worker runtime cache. A new service-worker version prompts the user before reload.
+The browser generates its launch splash screen from the PWA manifest's app name, icon, and
+background color. The UI uses system fonts so the app does not fetch fonts from a third
+party.
+
+The extension workspace can be built with `npm run build:extension`; its full browser
+manifest and packaging workflow will be completed in a later implementation step.

@@ -27,6 +27,11 @@ The existing [Todo app](../Todo/README.md) is the implementation reference for n
 
 Commit titles are examples, not commits already made. Keep each change small enough to review and require CI to pass before merging.
 
+### Implementation progress
+
+- **#1 workspace scaffold:** implemented and validated in the working tree; not committed because the TalentFly folder does not yet have Git metadata.
+- **#2 branded PWA shell:** implemented and validated in this working tree (all workspace tests, lint, type-check, build, and browser smoke check pass). This also remains uncommitted until the project repository is initialized.
+
 ### Milestone 0 — establish the project, app shells, and delivery pipeline first
 
 This is the first milestone: a clean monorepo that builds both browser deliverables and has working GitHub Actions, Firebase Hosting deployment scaffolding, and a reproducible extension package before implementing the analyzer.
@@ -83,11 +88,13 @@ This is the first milestone: a clean monorepo that builds both browser deliverab
 |---|---|---|
 | 22 | `test: add end-to-end PWA and extension smoke coverage` | Cover upload → extension capture → resume selection → provider selection → compare → run ID → deep-linked report, including PWA unavailable, reload, offline shell, and provider failures. Cover guest and authenticated role navigation, version diagnostics, and branded responsive shell. Run browser tests in CI without real API keys or Firebase production credentials. |
 | 23 | `ci: gate production and extension releases` | Require all three workspace test suites plus lint/type-check/build before deploy; use GitHub Environments with approvals for production; deploy Hosting/Functions/Firestore from trusted branches or manual dispatch; package/version the extension reproducibly; gate Chrome Web Store publishing behind manual release and publisher credentials. Pin action versions, apply least privilege, and scan artifacts for secrets. |
-| 24 | `docs: publish operations, privacy, and recovery guidance` | Document local development, PWA install/update behavior, extension installation/release, Firebase setup/rollback, role provisioning/permissions, telemetry consent/retention, local data export/delete, encrypted-key limitations/recovery, Claude/Copilot API credential and provider limits, version diagnostics, and known browser/site support. |
+| 24 | `security: scan staged changes with Gitleaks` | Add Husky as a root development dependency and configure a pre-commit hook that runs Gitleaks against staged changes before any commit. Fail closed with a clear install/configuration message if Gitleaks is unavailable; document installation for supported developer platforms (for example Homebrew on macOS) and provide the repository's Gitleaks config. Add CI Gitleaks scanning for commits/PRs as defense in depth, without exposing secrets in logs. Test the hook's success, detected-secret failure, and missing-binary behavior using a controlled stub or fixture; never check in real credentials. Gitleaks detects credentials accidentally included in source/staged changes; it does not inspect runtime network traffic or prove keys are never sent to an unintended endpoint, which must be enforced through architecture and tests. |
+| 25 | `docs: publish operations, privacy, and recovery guidance` | Document local development, PWA install/update behavior, extension installation/release, Firebase setup/rollback, role provisioning/permissions, telemetry consent/retention, local data export/delete, encrypted-key limitations/recovery, Claude/Copilot API credential and provider limits, version diagnostics, Gitleaks/Husky setup and troubleshooting, and known browser/site support. |
 
 ## CI/CD and environments
 
 - **Pull request CI:** install from the lockfile; lint and type-check all workspaces; run client, extension, and server test suites; build PWA, extension, and server; validate the extension manifest and ZIP contents; run secret scanning. No production credentials are available to PR jobs.
+- **Local secret guard (planned commit 24):** Husky runs Gitleaks on staged changes before commit and fails closed if the scanner is missing. This complements, but does not replace, CI secret scanning; developers install the native Gitleaks executable and follow documented setup.
 - **Required tests:** client, extension, and server each have a real test script from initial scaffolding. Every behavior-changing commit adds/updates tests and is locally verified by running all three workspace suites (and relevant focused tests); CI always executes all three. Test suites are never placeholder success scripts.
 - **Artifacts:** retain a versioned PWA build and a reproducible, unpacked-directory ZIP for manual testing or Chrome Web Store submission. Include build/version metadata but no `.env`, API keys, service-account files, or source-only development config.
 - **Firebase deploy:** use GitHub Environments and short-lived Google authentication where feasible (Workload Identity Federation preferred over a long-lived service-account key). Deploy the PWA to Hosting; deploy the NestJS HTTPS function, Firestore rules, and indexes only when those server pieces exist. Keep dev and production targets distinct.
