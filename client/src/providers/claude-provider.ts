@@ -28,7 +28,7 @@ async function createAnthropicClient(apiKey: string): Promise<AnthropicClient> {
     apiKey,
     dangerouslyAllowBrowser: true,
     maxRetries: 0,
-    timeout: 45_000,
+    timeout: 120_000,
   });
 }
 
