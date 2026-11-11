@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { DiagnosticsPage } from './DiagnosticsPage';
+import { HistoryPage } from './comparison/HistoryPage';
+import { RunDetailPage } from './comparison/RunDetailPage';
 import { CapturedJobInbox } from './inbox/CapturedJobInbox';
 import { ProviderSettings } from './providers/ProviderSettings';
 import { ResumeLibrary } from './resumes/ResumeLibrary';
+import { DATA_DELETED_EVENT, DataControls } from './settings/DataControls';
 
 type PageId = 'dashboard' | 'resumes' | 'inbox' | 'history' | 'settings' | 'diagnostics';
 
@@ -24,9 +27,23 @@ const pageTitles: Record<PageId, string> = {
   diagnostics: 'About & diagnostics',
 };
 
-function pageFromHash(): PageId {
-  const page = window.location.hash.slice(1);
-  return navigation.find((item) => item.id === page)?.id ?? 'dashboard';
+interface Route {
+  page: PageId;
+  /** Set for `#history/<runId>`. */
+  runId?: string;
+}
+
+const RUN_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Reads `#page` or `#history/<runId>`; anything unrecognised falls back safely. */
+export function parseRoute(hash: string): Route {
+  const [head = '', id = ''] = hash.replace(/^#/, '').split('/');
+  const page = navigation.find((item) => item.id === head)?.id ?? 'dashboard';
+  return page === 'history' && RUN_ID_PATTERN.test(id) ? { page, runId: id } : { page };
+}
+
+function routeFromHash(): Route {
+  return parseRoute(window.location.hash);
 }
 
 function BrandMark({ className = '' }: { className?: string }) {
@@ -37,29 +54,6 @@ function BrandMark({ className = '' }: { className?: string }) {
       alt=""
       aria-hidden="true"
     />
-  );
-}
-
-function EmptyState({
-  eyebrow,
-  title,
-  description,
-  icon,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  icon: string;
-}) {
-  return (
-    <section className="empty-state" aria-labelledby="empty-state-title">
-      <div className="empty-state-icon" aria-hidden="true">
-        {icon}
-      </div>
-      <p className="eyebrow">{eyebrow}</p>
-      <h2 id="empty-state-title">{title}</h2>
-      <p className="muted-copy">{description}</p>
-    </section>
   );
 }
 
@@ -150,7 +144,9 @@ function Dashboard({
 }
 
 export function App() {
-  const [page, setPage] = useState<PageId>(pageFromHash);
+  const [route, setRoute] = useState<Route>(routeFromHash);
+  const page = route.page;
+  const [settingsKey, setSettingsKey] = useState(0);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const [pwaError, setPwaError] = useState<string | null>(null);
@@ -160,11 +156,15 @@ export function App() {
     if (window.location.hash !== `#${nextPage}`) {
       window.history.pushState(null, '', `#${nextPage}`);
     }
-    setPage(nextPage);
+    setRoute({ page: nextPage });
   };
 
   useEffect(() => {
-    const syncPage = () => setPage(pageFromHash());
+    const syncPage = () => setRoute(routeFromHash());
+    const dataDeleted = () => {
+      setResumeCount(0);
+      setSettingsKey((key) => key + 1);
+    };
     const showUpdate = () => setUpdateAvailable(true);
     const showOfflineReady = () => setOfflineReady(true);
     const showPwaError = (event: Event) => {
@@ -174,6 +174,7 @@ export function App() {
 
     window.addEventListener('hashchange', syncPage);
     window.addEventListener('popstate', syncPage);
+    window.addEventListener(DATA_DELETED_EVENT, dataDeleted);
     window.addEventListener('talentfly:update-available', showUpdate);
     window.addEventListener('talentfly:offline-ready', showOfflineReady);
     window.addEventListener('talentfly:pwa-error', showPwaError);
@@ -181,6 +182,7 @@ export function App() {
     return () => {
       window.removeEventListener('hashchange', syncPage);
       window.removeEventListener('popstate', syncPage);
+      window.removeEventListener(DATA_DELETED_EVENT, dataDeleted);
       window.removeEventListener('talentfly:update-available', showUpdate);
       window.removeEventListener('talentfly:offline-ready', showOfflineReady);
       window.removeEventListener('talentfly:pwa-error', showPwaError);
@@ -237,7 +239,7 @@ export function App() {
           <div className="breadcrumb">
             <span>Workspace</span>
             <span aria-hidden="true">/</span>
-            <strong>{pageTitles[page]}</strong>
+            <strong>{route.runId ? 'Comparison report' : pageTitles[page]}</strong>
           </div>
           <div className="topbar-right">
             {offlineReady && (
@@ -291,7 +293,7 @@ export function App() {
           <div className="page-title-row">
             <div>
               <p className="eyebrow">TALENTFLY WORKSPACE</p>
-              <h1>{pageTitles[page]}</h1>
+              <h1>{route.runId ? 'Comparison report' : pageTitles[page]}</h1>
             </div>
             <span className="local-only-label">
               <span className="status-dot" />
@@ -306,15 +308,18 @@ export function App() {
           {page === 'inbox' && (
             <CapturedJobInbox extensionId={import.meta.env.VITE_TALENTFLY_EXTENSION_ID ?? ''} />
           )}
-          {page === 'history' && (
-            <EmptyState
-              eyebrow="YOUR PROGRESS"
-              title="Your comparison history will live here."
-              description="Each role you explore will have its own saved report, ready whenever you want to revisit it."
-              icon="C"
-            />
+          {page === 'history' &&
+            (route.runId ? (
+              <RunDetailPage runId={route.runId} key={route.runId} />
+            ) : (
+              <HistoryPage />
+            ))}
+          {page === 'settings' && (
+            <>
+              <ProviderSettings key={settingsKey} />
+              <DataControls />
+            </>
           )}
-          {page === 'settings' && <ProviderSettings />}
           {page === 'diagnostics' && <DiagnosticsPage />}
         </main>
       </div>

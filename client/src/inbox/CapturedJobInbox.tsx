@@ -531,7 +531,8 @@ export function CapturedJobInbox({
                 <p className="eyebrow">OPENED RUN</p>
                 <h4>{jobs.find((job) => job.id === deepLinkedRun.jobId)?.title ?? 'Saved job'}</h4>
                 <p>
-                  Run {deepLinkedRun.id} is saved with status <strong>{deepLinkedRun.status}</strong>.
+                  Run {deepLinkedRun.id} is saved with status <strong>{deepLinkedRun.status}</strong>.{' '}
+                  <a href={`#history/${deepLinkedRun.id}`}>Open the full report →</a>
                 </p>
               </article>
             )}

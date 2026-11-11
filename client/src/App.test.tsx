@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { App } from './App';
+import { indexedDB } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { App, parseRoute } from './App';
 
 describe('PWA workspace shell', () => {
   it('navigates between workspace sections', async () => {
@@ -40,5 +41,47 @@ describe('PWA workspace shell', () => {
     expect(screen.getByRole('heading', { name: 'Server build' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Chrome extension' })).toBeTruthy();
     expect(screen.getByText(/No extension build has been reported/)).toBeTruthy();
+  });
+});
+
+describe('hash routes', () => {
+  beforeEach(() => {
+    vi.stubGlobal('indexedDB', indexedDB);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('parses pages and run detail routes, rejecting anything unsafe', () => {
+    expect(parseRoute('')).toEqual({ page: 'dashboard' });
+    expect(parseRoute('#history')).toEqual({ page: 'history' });
+    expect(parseRoute('#history/run_123-abc')).toEqual({ page: 'history', runId: 'run_123-abc' });
+    expect(parseRoute('#settings')).toEqual({ page: 'settings' });
+    // Run IDs are only meaningful under history, and must look like IDs.
+    expect(parseRoute('#inbox/run_123')).toEqual({ page: 'inbox' });
+    expect(parseRoute('#history/<script>')).toEqual({ page: 'history' });
+    expect(parseRoute('#history/../../etc')).toEqual({ page: 'history' });
+    expect(parseRoute('#nonsense/run_1')).toEqual({ page: 'dashboard' });
+  });
+
+  it('opens the run detail view from a deep link and the history list from the nav', async () => {
+    window.history.replaceState(null, '', '#history/run_missing-1');
+    render(<App />);
+    expect(screen.getByRole('heading', { name: 'Comparison report', level: 1 })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'This comparison could not be found.' }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Comparisons' }));
+    expect(screen.getByRole('heading', { name: 'Comparisons', level: 1 })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'No comparisons yet.' })).toBeTruthy();
+    window.history.replaceState(null, '', '#');
+  });
+
+  it('shows the data controls under Settings', async () => {
+    window.history.replaceState(null, '', '#settings');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Data controls' })).toBeTruthy();
+    window.history.replaceState(null, '', '#');
   });
 });
