@@ -21,6 +21,8 @@ body {
   width: 360px;
   min-width: 320px;
   min-height: 430px;
+  max-height: 600px;
+  overflow-y: auto;
   margin: 0;
   background: #f6f7fb;
 }
@@ -124,6 +126,126 @@ body {
   color: #838ba0;
   font-size: 11px;
   line-height: 1.6;
+}
+
+.capture-button,
+.preview-secondary-button {
+  min-height: 37px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--violet);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.capture-button {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.capture-button:hover {
+  background: #5c4db3;
+}
+
+.capture-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.capture-button:focus-visible,
+.preview-secondary-button:focus-visible,
+.preview-input:focus-visible,
+.preview-textarea:focus-visible {
+  outline: 3px solid #9a8bea;
+  outline-offset: 2px;
+}
+
+.capture-status,
+.capture-error {
+  margin: 10px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.capture-status {
+  color: #68728b;
+}
+
+.capture-error {
+  color: #a64b51;
+}
+
+.capture-preview {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid #e8e4fb;
+}
+
+.preview-title {
+  margin: 0;
+  color: #434d69;
+  font-size: 12px;
+}
+
+.preview-label {
+  display: grid;
+  gap: 5px;
+  color: #69738c;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.preview-input,
+.preview-textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #dfe1ea;
+  border-radius: 7px;
+  background: #fff;
+  color: #202945;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.preview-input {
+  min-height: 34px;
+}
+
+.preview-textarea {
+  min-height: 160px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.preview-source {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #9399a8;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.preview-secondary-button {
+  border: 1px solid #e2dfef;
+  background: #fff;
+  color: #5e51a6;
+}
+
+.preview-secondary-button:hover {
+  background: #f8f6ff;
+}
+
+.capture-preview[hidden],
+.capture-status[hidden],
+.capture-error[hidden] {
+  display: none;
 }
 
 .origin-label {

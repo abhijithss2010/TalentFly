@@ -38,6 +38,7 @@ Commit titles are examples, not commits already made. Keep each change small eno
 - **#7 local data model and IndexedDB storage:** implemented in this working tree; schema upgrades preserve existing records, typed repositories provide local-only access, and import/export/delete-all have client tests.
 - **#8 resume library and file import:** implemented in this working tree; PDF, DOCX, and PPTX parsing, local file persistence, library controls, limits, and error states have client tests.
 - **#9 provider settings and encrypted API keys:** implemented in this working tree; Claude uses the official TypeScript SDK behind an extensible adapter registry, while API keys are encrypted in a separate non-exported IndexedDB store.
+- **#10 extension capture and preview:** implemented in this working tree; explicit active-tab capture extracts visible job details, supports an editable preview, and keeps content in the popup without sending or persisting it.
 
 ### Milestone 0 — establish the project, app shells, and delivery pipeline first
 

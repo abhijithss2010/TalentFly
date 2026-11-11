@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 const manifestUrl = new URL('../public/manifest.json', import.meta.url);
 
 describe('extension workspace', () => {
-  it('has a valid Manifest V3 identity and requests no permissions by default', async () => {
+  it('has a valid Manifest V3 identity and only requests temporary tab capture permissions', async () => {
     const manifest = JSON.parse(await readFile(manifestUrl, 'utf8')) as {
       action?: { default_popup?: string };
       manifest_version: number;
@@ -22,7 +22,7 @@ describe('extension workspace', () => {
     expect(manifest.name).toBe('TalentFly');
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(manifest.version).toBe(packageJson.version);
-    expect(manifest.permissions ?? []).toEqual([]);
+    expect(manifest.permissions ?? []).toEqual(['activeTab', 'scripting']);
     expect(manifest.host_permissions ?? []).toEqual([]);
     expect(manifest.action?.default_popup).toBe('popup.html');
     expect(manifest.icons).toMatchObject({

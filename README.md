@@ -114,8 +114,11 @@ npm run build:extension
 ```
 
 Load `extension/dist` through `chrome://extensions` → **Developer mode** → **Load
-unpacked**. This development build links to `http://localhost:5173` and requests no
-browser permissions yet.
+unpacked**. The popup's **Capture this page** action uses only the `activeTab` and `scripting`
+permissions to read the active tab after the user clicks Capture. It extracts visible job
+details and presents an editable preview; the capture is not sent or persisted by the extension.
+Pages that Chrome does not allow extensions to inspect show an explicit error. The development
+build links to `http://localhost:5173`.
 
 Production packaging requires the deployed HTTPS PWA origin:
 
