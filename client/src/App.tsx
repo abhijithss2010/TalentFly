@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { DiagnosticsPage } from './DiagnosticsPage';
+import { CapturedJobInbox } from './inbox/CapturedJobInbox';
 import { ProviderSettings } from './providers/ProviderSettings';
 import { ResumeLibrary } from './resumes/ResumeLibrary';
 
-type PageId = 'dashboard' | 'resumes' | 'history' | 'settings' | 'diagnostics';
+type PageId = 'dashboard' | 'resumes' | 'inbox' | 'history' | 'settings' | 'diagnostics';
 
 const navigation: { id: PageId; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Overview', icon: 'O' },
   { id: 'resumes', label: 'Resume library', icon: 'R' },
+  { id: 'inbox', label: 'Captured jobs', icon: 'J' },
   { id: 'history', label: 'Comparisons', icon: 'C' },
   { id: 'settings', label: 'Settings', icon: 'S' },
   { id: 'diagnostics', label: 'About & diagnostics', icon: 'D' },
@@ -16,6 +18,7 @@ const navigation: { id: PageId; label: string; icon: string }[] = [
 const pageTitles: Record<PageId, string> = {
   dashboard: 'Overview',
   resumes: 'Resume library',
+  inbox: 'Captured jobs',
   history: 'Comparisons',
   settings: 'Settings',
   diagnostics: 'About & diagnostics',
@@ -300,6 +303,9 @@ export function App() {
             <Dashboard onNavigate={navigateTo} resumeCount={resumeCount} />
           )}
           {page === 'resumes' && <ResumeLibrary onCountChange={setResumeCount} />}
+          {page === 'inbox' && (
+            <CapturedJobInbox extensionId={import.meta.env.VITE_TALENTFLY_EXTENSION_ID ?? ''} />
+          )}
           {page === 'history' && (
             <EmptyState
               eyebrow="YOUR PROGRESS"

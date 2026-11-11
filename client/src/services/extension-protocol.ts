@@ -8,9 +8,9 @@ export function validateExtensionWindowMessage(
   event: MessageEvent<unknown>,
   extensionId: string,
   allowedPwaOrigins: readonly string[],
-): ProtocolMessage {
-  if (event.source !== window) {
-    throw new Error('The extension message did not originate from this page window.');
+): { message: ProtocolMessage; source: Window; targetOrigin: string } {
+  if (!event.source || event.source === window) {
+    throw new Error('The extension message did not originate from a separate extension window.');
   }
 
   const sender: MessageSender = {
@@ -20,5 +20,9 @@ export function validateExtensionWindowMessage(
       : undefined,
     pageOrigin: window.location.origin,
   };
-  return validateExtensionMessage(event.data, sender, extensionId, allowedPwaOrigins);
+  return {
+    message: validateExtensionMessage(event.data, sender, extensionId, allowedPwaOrigins),
+    source: event.source as Window,
+    targetOrigin: event.origin,
+  };
 }

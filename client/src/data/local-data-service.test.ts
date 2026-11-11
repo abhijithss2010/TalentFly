@@ -107,6 +107,7 @@ describe('local data services', () => {
       createdAt: resume.createdAt,
       updatedAt: resume.updatedAt,
     });
+
     const exported = JSON.parse(JSON.stringify(await source.exportData()));
 
     const destination = await openServices();
@@ -126,6 +127,99 @@ describe('local data services', () => {
       destination.importData({ ...exported, version: 99 }),
     ).rejects.toThrow('The imported local data file has an unsupported format or version.');
     expect(await destination.jobs.getAll()).toEqual([job]);
+  });
+
+  it('saves a captured job idempotently and creates one run for retried requests', async () => {
+    const services = await openServices();
+    const capture = {
+      ...sampleJob(),
+      captureMessageId: 'capture-message-1',
+    };
+    const firstSavedJob = await services.saveCapturedJob(capture);
+    const duplicateSavedJob = await services.saveCapturedJob({
+      ...capture,
+      id: createRecordId('job'),
+      title: 'Edited retry must not replace the first save',
+    });
+    expect(duplicateSavedJob.id).toBe(firstSavedJob.id);
+    expect(duplicateSavedJob.title).toBe(capture.title);
+    expect(await services.getCapturedJob('capture-message-1')).toEqual(firstSavedJob);
+
+    const resume = sampleResume();
+    await services.resumes.save(resume);
+    const runInput = {
+      idempotencyKey: 'start-message-1',
+      jobId: firstSavedJob.id,
+      resumeIds: [resume.id],
+    };
+    const created = await services.createComparisonRun(runInput);
+    const retried = await services.createComparisonRun(runInput);
+
+    expect(retried.id).toBe(created.id);
+    expect(await services.runs.getAll()).toHaveLength(1);
+    expect(created.status).toBe('received');
+  });
+
+  it('checks run references and persists only valid status transitions', async () => {
+    const services = await openServices();
+    const job = await services.saveCapturedJob({
+      ...sampleJob(),
+      captureMessageId: 'capture-status',
+    });
+    const resume = sampleResume();
+    await services.resumes.save(resume);
+
+    await expect(
+      services.createComparisonRun({
+        idempotencyKey: 'missing-job',
+        jobId: 'missing',
+        resumeIds: [resume.id],
+      }),
+    ).rejects.toThrow('The captured job is no longer saved in this browser.');
+    await expect(
+      services.createComparisonRun({
+        idempotencyKey: 'missing-resume',
+        jobId: job.id,
+        resumeIds: ['missing-resume'],
+      }),
+    ).rejects.toThrow('One or more selected resumes are no longer available.');
+
+    const run = await services.createComparisonRun({
+      idempotencyKey: 'valid-run',
+      jobId: job.id,
+      resumeIds: [resume.id],
+    });
+    await expect(services.transitionRun(run.id, 'done')).rejects.toThrow(
+      'cannot transition from "received" to "done"',
+    );
+    await expect(services.transitionRun(run.id, 'failed')).rejects.toThrow(
+      'must include an error message',
+    );
+    const analysing = await services.transitionRun(run.id, 'analysing');
+    expect(analysing.status).toBe('analysing');
+    const done = await services.transitionRun(run.id, 'done');
+    expect(done.status).toBe('done');
+    await expect(services.transitionRun(run.id, 'failed', 'late failure')).rejects.toThrow(
+      'cannot transition from "done" to "failed"',
+    );
+    const failedRun = await services.createComparisonRun({
+      idempotencyKey: 'failed-run',
+      jobId: job.id,
+      resumeIds: [resume.id],
+    });
+    const markedFailed = await services.transitionRun(
+      failedRun.id,
+      'failed',
+      'The selected provider is unavailable.',
+    );
+    expect(markedFailed).toMatchObject({
+      status: 'failed',
+      error: 'The selected provider is unavailable.',
+    });
+    expect(await services.runs.get(run.id)).toMatchObject({
+      status: 'done',
+      error: undefined,
+    });
   });
 
   it('deletes every collection in one local-data operation', async () => {

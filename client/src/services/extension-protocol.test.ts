@@ -8,23 +8,29 @@ const allowedPwaOrigins = ['http://localhost:3000'];
 describe('PWA extension message boundary', () => {
   it('validates protocol messages from the configured extension origin', () => {
     const message = createProtocolMessage('PING', {}, 'request_1');
+    const extensionWindow = document.createElement('iframe');
+    document.body.append(extensionWindow);
     const event = new MessageEvent('message', {
       data: message,
       origin: `chrome-extension://${extensionId}`,
-      source: window,
+      source: extensionWindow.contentWindow,
     });
 
-    expect(validateExtensionWindowMessage(event, extensionId, allowedPwaOrigins)).toEqual(
+    expect(validateExtensionWindowMessage(event, extensionId, allowedPwaOrigins)).toMatchObject({
       message,
-    );
+      targetOrigin: `chrome-extension://${extensionId}`,
+    });
+    extensionWindow.remove();
   });
 
   it('rejects wrong extension origins, other windows, and invalid payloads', () => {
     const message = createProtocolMessage('PING', {}, 'request_1');
+    const extensionWindow = document.createElement('iframe');
+    document.body.append(extensionWindow);
     const wrongOrigin = new MessageEvent('message', {
       data: message,
       origin: 'https://evil.example',
-      source: window,
+      source: extensionWindow.contentWindow,
     });
     expect(() =>
       validateExtensionWindowMessage(wrongOrigin, extensionId, allowedPwaOrigins),
@@ -36,15 +42,16 @@ describe('PWA extension message boundary', () => {
     });
     expect(() =>
       validateExtensionWindowMessage(wrongWindow, extensionId, allowedPwaOrigins),
-    ).toThrow('did not originate from this page');
+    ).toThrow('separate extension window');
 
     const invalidMessage = new MessageEvent('message', {
       data: { ...message, protocolVersion: 99 },
       origin: `chrome-extension://${extensionId}`,
-      source: window,
+      source: extensionWindow.contentWindow,
     });
     expect(() =>
       validateExtensionWindowMessage(invalidMessage, extensionId, allowedPwaOrigins),
     ).toThrow('invalid shape');
+    extensionWindow.remove();
   });
 });

@@ -6,6 +6,9 @@ export type ProtocolMessageType =
   | 'PING'
   | 'PONG'
   | 'JOB_CAPTURED'
+  | 'CAPTURE_ACK'
+  | 'LIST_JOBS'
+  | 'JOBS'
   | 'LIST_RESUMES'
   | 'RESUMES'
   | 'START_COMPARISON'
@@ -26,13 +29,23 @@ export interface ResumeSummary {
   name: string;
 }
 
+export interface JobSummary {
+  id: string;
+  title: string;
+  company?: string;
+  location?: string;
+}
+
 export interface ProtocolPayloadMap {
   PING: Record<string, never>;
   PONG: { ready: true };
   JOB_CAPTURED: { job: CapturedJob };
+  CAPTURE_ACK: { accepted: true; jobId: string };
+  LIST_JOBS: Record<string, never>;
+  JOBS: { jobs: JobSummary[] };
   LIST_RESUMES: Record<string, never>;
   RESUMES: { resumes: ResumeSummary[] };
-  START_COMPARISON: { job: CapturedJob; resumeIds: string[] };
+  START_COMPARISON: { jobId: string; resumeIds: string[] };
   STATUS_UPDATE: {
     runId: string;
     status: RunStatus;
@@ -40,12 +53,15 @@ export interface ProtocolPayloadMap {
   };
 }
 
-export type ProtocolMessage<T extends ProtocolMessageType = ProtocolMessageType> = {
-  protocolVersion: typeof PROTOCOL_VERSION;
-  messageId: string;
-  type: T;
-  payload: ProtocolPayloadMap[T];
-};
+export type ProtocolMessage<T extends ProtocolMessageType = ProtocolMessageType> =
+  T extends ProtocolMessageType
+    ? {
+        protocolVersion: typeof PROTOCOL_VERSION;
+        messageId: string;
+        type: T;
+        payload: ProtocolPayloadMap[T];
+      }
+    : never;
 
 export interface MessageSender {
   origin: string;

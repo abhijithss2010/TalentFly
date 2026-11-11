@@ -31,6 +31,18 @@ export interface LocalDataServices {
   usage: EntityRepository<UsageRecord>;
   settings: EntityRepository<AppSettingsRecord>;
   credentials: EntityRepository<EncryptedCredentialRecord>;
+  getCapturedJob(messageId: string): Promise<JobRecord | undefined>;
+  saveCapturedJob(record: JobRecord): Promise<JobRecord>;
+  createComparisonRun(input: {
+    idempotencyKey: string;
+    jobId: string;
+    resumeIds: string[];
+  }): Promise<ComparisonRunRecord>;
+  transitionRun(
+    runId: string,
+    status: ComparisonRunRecord['status'],
+    error?: string,
+  ): Promise<ComparisonRunRecord>;
   exportData(): Promise<LocalDataExport>;
   importData(data: unknown): Promise<void>;
   deleteAll(): Promise<void>;
@@ -212,6 +224,7 @@ function validateExport(value: unknown): ValidatedLocalData {
     (record) =>
       isText(record.title) &&
       isText(record.description) &&
+      (record.captureMessageId === undefined || isText(record.captureMessageId)) &&
       (record.company === undefined || isText(record.company)) &&
       (record.location === undefined || isText(record.location)) &&
       (record.sourceUrl === undefined || isText(record.sourceUrl)),
@@ -223,6 +236,7 @@ function validateExport(value: unknown): ValidatedLocalData {
       isText(record.jobId) &&
       Array.isArray(record.resumeIds) &&
       record.resumeIds.every(isText) &&
+      (record.idempotencyKey === undefined || isText(record.idempotencyKey)) &&
       ['received', 'analysing', 'done', 'failed'].includes(String(record.status)) &&
       (record.provider === undefined || isProviderId(record.provider)) &&
       (record.result === undefined || isObject(record.result)) &&
@@ -264,6 +278,39 @@ function readAll<T>(store: IDBObjectStore): IDBRequest<T[]> {
   return store.getAll();
 }
 
+function getIndexValue<T>(
+  database: IDBDatabase,
+  storeName: 'jobs' | 'runs',
+  indexName: string,
+  value: IDBValidKey,
+): Promise<T | undefined> {
+  return withStore(database, storeName, 'readonly', (store) =>
+    store.index(indexName).get(value),
+  );
+}
+
+function assertRunTransition(
+  current: ComparisonRunRecord['status'],
+  next: ComparisonRunRecord['status'],
+  error?: string,
+): void {
+  const allowed: Record<ComparisonRunRecord['status'], ComparisonRunRecord['status'][]> = {
+    received: ['analysing', 'failed'],
+    analysing: ['done', 'failed'],
+    done: [],
+    failed: [],
+  };
+  if (current === next) {
+    return;
+  }
+  if (!allowed[current].includes(next)) {
+    throw new Error(`The comparison run cannot transition from "${current}" to "${next}".`);
+  }
+  if (next === 'failed' && !error?.trim()) {
+    throw new Error('A failed comparison run must include an error message.');
+  }
+}
+
 function addAll<T extends StoredRecord>(store: IDBObjectStore, records: T[]): void {
   for (const record of records) {
     store.put(record);
@@ -298,6 +345,143 @@ export async function createLocalDataServices(options?: {
     usage: createRepository(database, 'usage'),
     settings: createRepository(database, 'settings'),
     credentials: createRepository(database, 'credentials'),
+    getCapturedJob: (messageId) =>
+      getIndexValue<JobRecord>(database, 'jobs', 'byCaptureMessageId', messageId),
+    async saveCapturedJob(record) {
+      if (!record.captureMessageId) {
+        throw new Error('Captured jobs require a protocol message ID.');
+      }
+      const transaction = database.transaction('jobs', 'readwrite');
+      const completed = transactionComplete(transaction);
+      const store = transaction.objectStore('jobs');
+      try {
+        const existing = (await requestResult(
+          store.index('byCaptureMessageId').get(record.captureMessageId),
+        )) as JobRecord | undefined;
+        if (existing) {
+          await completed;
+          return existing;
+        }
+        await requestResult(store.add(record));
+        await completed;
+        return record;
+      } catch (error) {
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already have completed or aborted.
+        }
+        await completed.catch(() => undefined);
+        if (error instanceof DOMException && error.name === 'ConstraintError') {
+          const existing = await getIndexValue<JobRecord>(
+            database,
+            'jobs',
+            'byCaptureMessageId',
+            record.captureMessageId,
+          );
+          if (existing) {
+            return existing;
+          }
+        }
+        throw error;
+      }
+    },
+    async createComparisonRun({ idempotencyKey, jobId, resumeIds }) {
+      if (!idempotencyKey) {
+        throw new Error('Comparison runs require an idempotency key.');
+      }
+      if (resumeIds.length === 0 || new Set(resumeIds).size !== resumeIds.length) {
+        throw new Error('Choose one or more distinct resumes before starting a comparison.');
+      }
+
+      const transaction = database.transaction(['runs', 'jobs', 'resumes'], 'readwrite');
+      const completed = transactionComplete(transaction);
+      const runs = transaction.objectStore('runs');
+      const jobs = transaction.objectStore('jobs');
+      const resumes = transaction.objectStore('resumes');
+      try {
+        const existing = (await requestResult(
+          runs.index('byIdempotencyKey').get(idempotencyKey),
+        )) as ComparisonRunRecord | undefined;
+        if (existing) {
+          await completed;
+          return existing;
+        }
+
+        const job = await requestResult(jobs.get(jobId)) as JobRecord | undefined;
+        if (!job) {
+          throw new Error('The captured job is no longer saved in this browser.');
+        }
+        const selectedResumes = await Promise.all(
+          resumeIds.map((id) => requestResult(resumes.get(id))),
+        );
+        if (selectedResumes.some((resume) => !resume)) {
+          throw new Error('One or more selected resumes are no longer available.');
+        }
+
+        const now = new Date().toISOString();
+        const run: ComparisonRunRecord = {
+          id: createRecordId('run'),
+          idempotencyKey,
+          jobId,
+          resumeIds: [...resumeIds],
+          status: 'received',
+          createdAt: now,
+          updatedAt: now,
+        };
+        await requestResult(runs.add(run));
+        await completed;
+        return run;
+      } catch (error) {
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already have completed or aborted.
+        }
+        await completed.catch(() => undefined);
+        if (error instanceof DOMException && error.name === 'ConstraintError') {
+          const existing = await getIndexValue<ComparisonRunRecord>(
+            database,
+            'runs',
+            'byIdempotencyKey',
+            idempotencyKey,
+          );
+          if (existing) {
+            return existing;
+          }
+        }
+        throw error;
+      }
+    },
+    async transitionRun(runId, status, errorMessage) {
+      const transaction = database.transaction('runs', 'readwrite');
+      const completed = transactionComplete(transaction);
+      const store = transaction.objectStore('runs');
+      try {
+        const current = await requestResult(store.get(runId)) as ComparisonRunRecord | undefined;
+        if (!current) {
+          throw new Error('The comparison run could not be found.');
+        }
+        assertRunTransition(current.status, status, errorMessage);
+        const updated: ComparisonRunRecord = {
+          ...current,
+          status,
+          error: status === 'failed' ? errorMessage : undefined,
+          updatedAt: new Date().toISOString(),
+        };
+        await requestResult(store.put(updated));
+        await completed;
+        return updated;
+      } catch (transitionError) {
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already have completed or aborted.
+        }
+        await completed.catch(() => undefined);
+        throw transitionError;
+      }
+    },
     async exportData() {
       const transaction = database.transaction(USER_DATA_STORE_NAMES, 'readonly');
       const completed = transactionComplete(transaction);

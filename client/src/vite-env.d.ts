@@ -3,6 +3,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_TALENTFLY_API_URL?: string;
+  readonly VITE_TALENTFLY_EXTENSION_ID?: string;
 }
 
 declare const __TALENTFLY_BUILD_INFO__: {

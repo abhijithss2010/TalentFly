@@ -1,5 +1,5 @@
 export const LOCAL_DATABASE_NAME = 'talentfly-local';
-export const LOCAL_DATABASE_VERSION = 3;
+export const LOCAL_DATABASE_VERSION = 4;
 
 export const USER_DATA_STORE_NAMES = [
   'resumes',
@@ -64,6 +64,13 @@ const migrations: Record<number, Migration> = {
   },
   3(database, transaction) {
     ensureStore(database, transaction, 'credentials');
+  },
+  4(_database, transaction) {
+    const jobs = transaction.objectStore('jobs');
+    ensureIndex(jobs, 'byCaptureMessageId', 'captureMessageId', { unique: true });
+
+    const runs = transaction.objectStore('runs');
+    ensureIndex(runs, 'byIdempotencyKey', 'idempotencyKey', { unique: true });
   },
 };
 

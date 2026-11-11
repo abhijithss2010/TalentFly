@@ -43,6 +43,13 @@ describe('shared extension protocol', () => {
       createProtocolMessage('PING', {}, 'ping'),
       createProtocolMessage('PONG', { ready: true }, 'pong'),
       createProtocolMessage('JOB_CAPTURED', { job }, 'job'),
+      createProtocolMessage('CAPTURE_ACK', { accepted: true, jobId: 'job_1' }, 'capture-ack'),
+      createProtocolMessage('LIST_JOBS', {}, 'list-jobs'),
+      createProtocolMessage(
+        'JOBS',
+        { jobs: [{ id: 'job_1', title: 'Engineer' }] },
+        'jobs',
+      ),
       createProtocolMessage('LIST_RESUMES', {}, 'list'),
       createProtocolMessage(
         'RESUMES',
@@ -51,7 +58,7 @@ describe('shared extension protocol', () => {
       ),
       createProtocolMessage(
         'START_COMPARISON',
-        { job, resumeIds: ['resume_1'] },
+        { jobId: 'job_1', resumeIds: ['resume_1'] },
         'start',
       ),
       createProtocolMessage(
@@ -85,7 +92,7 @@ describe('shared extension protocol', () => {
     expect(() =>
       createProtocolMessage(
         'START_COMPARISON',
-        { job, resumeIds: ['resume_1', 'resume_1'] },
+        { jobId: 'job_1', resumeIds: ['resume_1', 'resume_1'] },
         'duplicate',
       ),
     ).toThrow('invalid shape');

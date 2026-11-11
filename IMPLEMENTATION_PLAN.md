@@ -40,6 +40,7 @@ Commit titles are examples, not commits already made. Keep each change small eno
 - **#9 provider settings and encrypted API keys:** implemented in this working tree; Claude uses the official TypeScript SDK behind an extensible adapter registry, while API keys are encrypted in a separate non-exported IndexedDB store.
 - **#10 extension capture and preview:** implemented in this working tree; explicit active-tab capture extracts visible job details, supports an editable preview, and keeps content in the popup without sending or persisting it.
 - **#11 validated extension messaging protocol:** implemented in this working tree; a shared package defines versioned message shapes and validates payloads, size, origins, and extension identity on both application boundaries.
+- **#12 captured-job inbox and run creation:** implemented in this working tree; the PWA validates extension messages, confirms and stores captures, returns resume IDs/names, and creates idempotent local runs with guarded persisted status transitions.
 
 ### Milestone 0 — establish the project, app shells, and delivery pipeline first
 

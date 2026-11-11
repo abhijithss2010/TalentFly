@@ -6,6 +6,9 @@ const MESSAGE_TYPES = new Set([
   'PING',
   'PONG',
   'JOB_CAPTURED',
+  'CAPTURE_ACK',
+  'LIST_JOBS',
+  'JOBS',
   'LIST_RESUMES',
   'RESUMES',
   'START_COMPARISON',
@@ -85,6 +88,33 @@ function validatePayload(type, payload) {
       return exactKeys(payload, ['ready']) && payload.ready === true;
     case 'JOB_CAPTURED':
       return exactKeys(payload, ['job']) && validateJob(payload.job);
+    case 'CAPTURE_ACK':
+      return (
+        exactKeys(payload, ['accepted', 'jobId']) &&
+        payload.accepted === true &&
+        typeof payload.jobId === 'string' &&
+        RECORD_ID_PATTERN.test(payload.jobId)
+      );
+    case 'LIST_JOBS':
+      return exactKeys(payload, []);
+    case 'JOBS':
+      return (
+        exactKeys(payload, ['jobs']) &&
+        Array.isArray(payload.jobs) &&
+        payload.jobs.length <= 100 &&
+        payload.jobs.every(
+          (job) =>
+            isRecord(job) &&
+            Object.keys(job).every((key) => ['id', 'title', 'company', 'location'].includes(key)) &&
+            Object.hasOwn(job, 'id') &&
+            Object.hasOwn(job, 'title') &&
+            typeof job.id === 'string' &&
+            RECORD_ID_PATTERN.test(job.id) &&
+            validText(job.title, MAX_JOB_FIELD_LENGTH) &&
+            (job.company === undefined || validText(job.company, MAX_JOB_FIELD_LENGTH)) &&
+            (job.location === undefined || validText(job.location, MAX_JOB_FIELD_LENGTH)),
+        )
+      );
     case 'RESUMES':
       return (
         exactKeys(payload, ['resumes']) &&
@@ -100,8 +130,9 @@ function validatePayload(type, payload) {
       );
     case 'START_COMPARISON':
       return (
-        exactKeys(payload, ['job', 'resumeIds']) &&
-        validateJob(payload.job) &&
+        exactKeys(payload, ['jobId', 'resumeIds']) &&
+        typeof payload.jobId === 'string' &&
+        RECORD_ID_PATTERN.test(payload.jobId) &&
         Array.isArray(payload.resumeIds) &&
         payload.resumeIds.length > 0 &&
         payload.resumeIds.length <= MAX_COMPARISON_RESUME_COUNT &&

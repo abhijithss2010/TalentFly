@@ -63,6 +63,12 @@ describe('local IndexedDB schema', () => {
     expect([...upgraded.objectStoreNames]).toEqual(
       expect.arrayContaining(['resumes', 'jobs', 'runs', 'usage', 'settings', 'credentials']),
     );
+    expect(
+      upgraded.transaction('jobs').objectStore('jobs').indexNames.contains('byCaptureMessageId'),
+    ).toBe(true);
+    expect(
+      upgraded.transaction('runs').objectStore('runs').indexNames.contains('byIdempotencyKey'),
+    ).toBe(true);
     expect(upgraded.transaction('resumes').objectStore('resumes').indexNames.contains('byUpdatedAt'))
       .toBe(true);
 

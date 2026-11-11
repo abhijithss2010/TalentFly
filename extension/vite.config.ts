@@ -1,8 +1,34 @@
 import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createBuildInfo } from '../scripts/build-info.mjs';
-import { defineConfig, loadEnv } from 'vite';
-import { resolvePwaOrigin } from './src/pwa-origin.ts';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { pwaMatchPattern, resolvePwaOrigin } from './src/pwa-origin.ts';
+
+function extensionManifestPlugin(pwaOrigin: string): Plugin {
+  return {
+    name: 'talentfly-extension-manifest',
+    writeBundle(outputOptions) {
+      if (!outputOptions.dir) {
+        throw new Error('The extension manifest requires a directory build output.');
+      }
+      const sourceManifest = readFileSync(
+        resolve(process.cwd(), 'public/manifest.json'),
+        'utf8',
+      );
+      const manifest = JSON.parse(sourceManifest) as Record<string, unknown>;
+      manifest.permissions = ['activeTab', 'scripting', 'storage'];
+      manifest.background = { service_worker: 'service-worker.js', type: 'module' };
+      manifest.externally_connectable = {
+        matches: [pwaMatchPattern(pwaOrigin)],
+      };
+      writeFileSync(
+        resolve(outputOptions.dir, 'manifest.json'),
+        JSON.stringify(manifest, null, 2),
+      );
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
@@ -19,8 +45,16 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       sourcemap: false,
       rollupOptions: {
-        input: resolve(process.cwd(), 'popup.html'),
+        input: {
+          popup: resolve(process.cwd(), 'popup.html'),
+          'service-worker': resolve(process.cwd(), 'src/service-worker.ts'),
+        },
+        output: {
+          entryFileNames: (chunk) =>
+            chunk.name === 'service-worker' ? 'service-worker.js' : 'assets/[name]-[hash].js',
+        },
       },
     },
+    plugins: [extensionManifestPlugin(pwaOrigin)],
   };
 });

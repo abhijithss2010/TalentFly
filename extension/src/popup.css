@@ -305,3 +305,64 @@ body {
   border-radius: 50%;
   background: #61b59c;
 }
+
+.handoff-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.resume-picker {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #e8e4fb;
+  border-radius: 8px;
+}
+
+.resume-picker legend {
+  padding: 0 4px;
+  color: #434d69;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.resume-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #434d69;
+  font-size: 11px;
+}
+
+.recovery-actions,
+.run-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.run-result {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.text-button {
+  color: #5c4db3;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.text-button:hover {
+  text-decoration: underline;
+}
+
+.text-button:focus-visible {
+  outline: 3px solid #9a8bea;
+  outline-offset: 2px;
+}

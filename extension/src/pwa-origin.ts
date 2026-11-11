@@ -1,5 +1,10 @@
 const DEVELOPMENT_ORIGIN = 'http://localhost:5173';
 
+export function pwaMatchPattern(origin: string): string {
+  const parsed = new URL(origin);
+  return `${parsed.origin}/*`;
+}
+
 export function resolvePwaOrigin(configuredOrigin: string | undefined, mode: string): string {
   const candidate = configuredOrigin?.trim();
 

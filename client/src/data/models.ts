@@ -18,6 +18,7 @@ export interface ResumeRecord extends StoredRecord {
 }
 
 export interface JobRecord extends StoredRecord {
+  captureMessageId?: string;
   title: string;
   company?: string;
   location?: string;
@@ -26,6 +27,7 @@ export interface JobRecord extends StoredRecord {
 }
 
 export interface ComparisonRunRecord extends StoredRecord {
+  idempotencyKey?: string;
   jobId: string;
   resumeIds: string[];
   status: RunStatus;
