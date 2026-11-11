@@ -1,7 +1,6 @@
 import {
-  createProtocolMessage,
+  PROTOCOL_VERSION,
   validateProtocolMessage,
-  type CapturedJob,
   type ProtocolMessage,
 } from '@talentfly/shared';
 
@@ -15,86 +14,69 @@ export interface ExtensionRuntime {
   lastError?: { message?: string };
 }
 
-export async function relayToPwa(
-  runtime: ExtensionRuntime,
-  message: ProtocolMessage,
-): Promise<ProtocolMessage> {
-  validateProtocolMessage(message);
-  const response = await new Promise<unknown>((resolve, reject) => {
-    runtime.sendMessage({ channel: RELAY_CHANNEL, request: message }, (result) => {
+const OUTDATED_WORKER_MESSAGE =
+  'The TalentFly extension background worker is out of date or not running. Reload TalentFly on chrome://extensions, then reopen this popup.';
+
+function sendToWorker(runtime: ExtensionRuntime, message: unknown): Promise<unknown> {
+  return new Promise<unknown>((resolve, reject) => {
+    runtime.sendMessage(message, (result) => {
       if (runtime.lastError) {
-        reject(new Error(runtime.lastError.message ?? 'The TalentFly PWA could not be reached.'));
+        reject(new Error(runtime.lastError.message ?? OUTDATED_WORKER_MESSAGE));
         return;
       }
       resolve(result);
     });
   });
+}
 
-  if (
-    typeof response === 'object' &&
-    response !== null &&
-    'error' in response &&
-    response.error === 'PWA_NOT_CONNECTED'
-  ) {
-    throw new Error('Open the TalentFly PWA, then retry this action.');
+/**
+ * Confirms the background worker speaks this popup's protocol version. A worker from an older
+ * build does not know the handshake and never answers, which is reported as out of date.
+ */
+export async function checkRelayWorker(runtime: ExtensionRuntime): Promise<void> {
+  let response: unknown;
+  try {
+    response = await sendToWorker(runtime, { channel: RELAY_CHANNEL, hello: true });
+  } catch {
+    throw new Error(OUTDATED_WORKER_MESSAGE);
   }
   if (
-    typeof response === 'object' &&
-    response !== null &&
-    'error' in response &&
-    typeof response.error === 'string'
+    typeof response !== 'object' ||
+    response === null ||
+    !('protocolVersion' in response)
   ) {
-    throw new Error(response.error);
+    throw new Error(OUTDATED_WORKER_MESSAGE);
   }
-  return validateProtocolMessage(response);
-}
-
-export interface ChromeStorageSession {
-  get(key: string): Promise<Record<string, unknown>>;
-  set(items: Record<string, unknown>): Promise<void>;
-}
-
-export interface ChromeTabs {
-  create(createProperties: { url: string; active?: boolean }): Promise<unknown>;
-}
-
-export interface PendingCaptureBrowserApi {
-  storage: { session: ChromeStorageSession };
-  tabs: ChromeTabs;
-}
-
-export async function queueCaptureAndOpenPwa(
-  browser: PendingCaptureBrowserApi,
-  pwaOrigin: string,
-  job: CapturedJob,
-): Promise<void> {
-  const stored = await browser.storage.session.get('talentflyPendingCapture');
-  const existing = stored.talentflyPendingCapture as { createdAt?: unknown } | undefined;
-  if (
-    existing &&
-    typeof existing.createdAt === 'number' &&
-    Date.now() - existing.createdAt < 30 * 60 * 1000
-  ) {
+  if (response.protocolVersion !== PROTOCOL_VERSION) {
     throw new Error(
-      'A capture is already waiting for review in TalentFly. Open the PWA before sending another.',
+      `The extension background worker speaks protocol version ${String(response.protocolVersion)} but this popup needs ${PROTOCOL_VERSION}. Reload TalentFly on chrome://extensions, then reopen this popup.`,
     );
   }
+}
 
-  const message = createProtocolMessage('JOB_CAPTURED', {
-    job: {
-      title: job.title,
-      company: job.company,
-      location: job.location,
-      sourceUrl: job.sourceUrl,
-      description: job.description,
-    },
-  });
-  await browser.storage.session.set({
-    talentflyPendingCapture: { message, createdAt: Date.now() },
-  });
-  const target = new URL(pwaOrigin);
-  target.hash = 'inbox';
-  await browser.tabs.create({ url: target.toString(), active: true });
+export async function relayToPwa(
+  runtime: ExtensionRuntime,
+  message: ProtocolMessage,
+): Promise<ProtocolMessage> {
+  validateProtocolMessage(message);
+  const response = await sendToWorker(runtime, { channel: RELAY_CHANNEL, request: message });
+
+  if (response === undefined || response === null) {
+    throw new Error(OUTDATED_WORKER_MESSAGE);
+  }
+  if (typeof response === 'object' && 'error' in response) {
+    if (response.error === 'PWA_NOT_CONNECTED') {
+      throw new Error('Open the TalentFly PWA, then retry this action.');
+    }
+    if (typeof response.error === 'string') {
+      throw new Error(response.error);
+    }
+  }
+  const reply = validateProtocolMessage(response);
+  if (reply.type === 'ERROR') {
+    throw new Error(reply.payload.message);
+  }
+  return reply;
 }
 
 export const extensionRelayChannel = RELAY_CHANNEL;

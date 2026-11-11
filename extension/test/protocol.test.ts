@@ -47,6 +47,6 @@ describe('extension PWA message boundary', () => {
         extensionId,
         allowedPwaOrigins,
       ),
-    ).toThrow('invalid shape');
+    ).toThrow('Unsupported protocol version 4');
   });
 });

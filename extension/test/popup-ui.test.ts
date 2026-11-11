@@ -2,309 +2,386 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderPopup } from '../src/popup-ui';
 import type { JobCapture } from '../src/job-capture';
-import {
-  createProtocolMessage,
-  type ProtocolMessage,
-} from '@talentfly/shared';
+import { UnsupportedSiteError } from '../src/supported-site';
+import { createProtocolMessage, type ProtocolMessage } from '@talentfly/shared';
+
+const buildInfo = { version: '0.1.0', commit: 'abc123', builtAt: '2026-11-11T00:00:00.000Z' };
+const ORIGIN = 'https://talentfly.example';
+const capture: JobCapture = {
+  title: 'Frontend Engineer',
+  company: 'Example Co',
+  location: 'Remote',
+  sourceUrl: 'https://whoz.com/jobs/123',
+  description: 'Build accessible web applications.',
+  descriptionTruncated: false,
+  otherFields: { Reference: 'REF-7' },
+};
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+interface FakePwa {
+  reachable: boolean;
+  resumes: { id: string; name: string }[];
+  startReply?: (message: ProtocolMessage) => ProtocolMessage;
+  calls: ProtocolMessage[];
+}
+
+function bridgeFor(pwa: FakePwa) {
+  return {
+    available: true,
+    async request(message: ProtocolMessage): Promise<ProtocolMessage> {
+      pwa.calls.push(message);
+      if (!pwa.reachable) throw new Error('Open the TalentFly PWA, then retry this action.');
+      switch (message.type) {
+        case 'PING':
+          return createProtocolMessage('PONG', { ready: true }, message.messageId);
+        case 'LIST_RESUMES':
+          return createProtocolMessage('RESUMES', { resumes: pwa.resumes }, message.messageId);
+        case 'START_COMPARISON':
+          return (
+            pwa.startReply?.(message) ??
+            createProtocolMessage(
+              'STATUS_UPDATE',
+              { runId: 'run_1', status: 'received' },
+              message.messageId,
+            )
+          );
+        default:
+          throw new Error(`Unexpected ${message.type}`);
+      }
+    },
+  };
+}
 
 describe('extension popup', () => {
   let root: HTMLElement;
+  let pwa: FakePwa;
 
   beforeEach(() => {
     document.body.innerHTML = '<main id="app"></main>';
     const app = document.querySelector<HTMLElement>('#app');
     if (!app) throw new Error('Missing test application root');
     root = app;
+    pwa = {
+      reachable: true,
+      resumes: [
+        { id: 'resume_1', name: 'Frontend resume' },
+        { id: 'resume_2', name: 'Backend resume' },
+      ],
+      calls: [],
+    };
   });
 
-  it('shows branding, capture action, and the configured PWA link', () => {
-    renderPopup(root, 'https://talentfly.example', {
-      version: '0.1.0',
-      commit: 'abc123',
-      builtAt: '2026-11-11T00:00:00.000Z',
+  const runButton = () => root.querySelector<HTMLButtonElement>('.primary-button');
+  const resumeSelect = () => root.querySelector<HTMLSelectElement>('select[name="resume"]');
+  const choose = (id: string) => {
+    const select = resumeSelect();
+    if (select) {
+      select.value = id;
+      select.dispatchEvent(new Event('change'));
+    }
+  };
+  const connectionState = () => root.querySelector<HTMLElement>('.connection-bar')?.dataset.state;
+
+  it('has no capture button, preview, or manual send flow', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+
+    expect(root.textContent).not.toContain('Capture this page');
+    expect(root.querySelector('textarea')).toBeNull();
+    expect(root.querySelector('input[type="text"]')).toBeNull();
+    expect(root.textContent).not.toContain('Send to TalentFly');
+  });
+
+  it('shows PWA status and a refresh button at the top, connecting on open', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    expect(root.firstElementChild?.nextElementSibling?.className).toBe('connection-bar');
+    expect(connectionState()).toBe('checking');
+    await flush();
+
+    expect(connectionState()).toBe('connected');
+    expect(root.querySelector('.connection-text')?.textContent).toBe('TalentFly connected');
+    expect(root.querySelector('.connection-refresh')?.textContent).toBe('Refresh');
+  });
+
+  it('extracts automatically on open and shows the values read-only', async () => {
+    const extract = vi.fn(async () => capture);
+    renderPopup(root, ORIGIN, buildInfo, extract, bridgeFor(pwa));
+    expect(extract).toHaveBeenCalledTimes(1);
+    await flush();
+
+    const values = [...root.querySelectorAll('.job-field-value')].map((node) => node.textContent);
+    expect(values).toEqual(['Frontend Engineer', 'Example Co', 'Remote', 'REF-7']);
+    const labels = [...root.querySelectorAll('.job-field-label')].map((node) => node.textContent);
+    expect(labels).toEqual(['Title', 'Company', 'Location', 'Reference']);
+    expect(root.querySelector('.job-description-text')?.textContent).toBe(capture.description);
+    // The page URL is sent to the PWA but not displayed in the popup.
+    expect(root.textContent).not.toContain('whoz.com/jobs/123');
+  });
+
+  it('explains pages outside whoz.com and offers no run action', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => {
+      throw new UnsupportedSiteError(['whoz.com']);
+    }, bridgeFor(pwa));
+    await flush();
+
+    expect(root.querySelector('.card-error:not([hidden])')?.textContent).toContain('whoz.com');
+    expect(root.querySelector<HTMLElement>('.job-fields')?.hidden).toBe(true);
+    const runCard = [...root.querySelectorAll<HTMLElement>('.card')].find((card) =>
+      card.textContent?.includes('Compare with'),
+    );
+    expect(runCard?.hidden).toBe(true);
+  });
+
+  it('offers a retry when extraction fails on a whoz.com page', async () => {
+    let attempts = 0;
+    renderPopup(root, ORIGIN, buildInfo, async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('No visible job description was found on this page.');
+      return capture;
+    }, bridgeFor(pwa));
+    await flush();
+
+    const retry = root.querySelector<HTMLButtonElement>('.secondary-button');
+    expect(retry?.hidden).toBe(false);
+    retry?.click();
+    await flush();
+    expect(root.querySelector('.job-field-value')?.textContent).toBe('Frontend Engineer');
+  });
+
+  it('uses a single-choice dropdown with the first resume selected by default', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+
+    expect(root.querySelector('input[type="checkbox"]')).toBeNull();
+    const options = [...(resumeSelect()?.options ?? [])].map((option) => [option.value, option.text]);
+    expect(options).toEqual([
+      ['resume_1', 'Frontend resume'],
+      ['resume_2', 'Backend resume'],
+    ]);
+    expect(resumeSelect()?.value).toBe('resume_1');
+    expect(resumeSelect()?.multiple).toBe(false);
+    expect(runButton()?.disabled).toBe(false);
+  });
+
+  it('keeps the run button disabled while extraction is pending or the PWA is disconnected', async () => {
+    let finish: (value: JobCapture) => void = () => undefined;
+    renderPopup(
+      root,
+      ORIGIN,
+      buildInfo,
+      () => new Promise<JobCapture>((resolve) => (finish = resolve)),
+      bridgeFor(pwa),
+    );
+    await flush();
+    expect(connectionState()).toBe('connected');
+    expect(runButton()?.disabled).toBe(true);
+    finish(capture);
+    await flush();
+    expect(runButton()?.disabled).toBe(false);
+
+    document.body.innerHTML = '<main id="app"></main>';
+    root = document.querySelector<HTMLElement>('#app') as HTMLElement;
+    pwa.reachable = false;
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+    expect(connectionState()).toBe('disconnected');
+    expect(root.querySelector('.connection-refresh')?.textContent).toBe('Connect');
+    expect(runButton()?.disabled).toBe(true);
+    expect(root.querySelector<HTMLAnchorElement>('.connection-hint a')?.href).toBe(
+      `${ORIGIN}/#inbox`,
+    );
+  });
+
+  it('connects when the PWA becomes available and defaults to the first resume', async () => {
+    pwa.reachable = false;
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+    expect(connectionState()).toBe('disconnected');
+
+    pwa.reachable = true;
+    root.querySelector<HTMLButtonElement>('.connection-refresh')?.click();
+    await flush();
+    expect(connectionState()).toBe('connected');
+    expect(resumeSelect()?.value).toBe('resume_1');
+  });
+
+  it('refresh keeps the chosen resume if it still exists, otherwise falls back to the first', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+    choose('resume_2');
+    pwa.resumes = [{ id: 'resume_2', name: 'Backend resume' }, { id: 'resume_3', name: 'New' }];
+    root.querySelector<HTMLButtonElement>('.connection-refresh')?.click();
+    await flush();
+    expect(resumeSelect()?.value).toBe('resume_2');
+
+    pwa.resumes = [{ id: 'resume_3', name: 'New' }, { id: 'resume_4', name: 'Other' }];
+    root.querySelector<HTMLButtonElement>('.connection-refresh')?.click();
+    await flush();
+    expect(resumeSelect()?.value).toBe('resume_3');
+    expect(runButton()?.disabled).toBe(false);
+  });
+
+  it('shows an empty-resume message and keeps the run disabled', async () => {
+    pwa.resumes = [];
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+    expect(root.textContent).toContain('No resumes yet.');
+    expect(runButton()?.disabled).toBe(true);
+  });
+
+  it('sends the extracted job and exactly the chosen resume, then links to the run', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+    choose('resume_2');
+    runButton()?.click();
+    await flush();
+
+    const start = pwa.calls.at(-1);
+    expect(start).toMatchObject({
+      type: 'START_COMPARISON',
+      payload: {
+        job: {
+          title: 'Frontend Engineer',
+          company: 'Example Co',
+          location: 'Remote',
+          sourceUrl: capture.sourceUrl,
+          description: capture.description,
+          otherFields: { Reference: 'REF-7' },
+        },
+        resumeIds: ['resume_2'],
+      },
     });
-
-    expect(root.querySelector('h1')?.textContent).toBe('Make your next move count.');
-    expect(root.textContent).toContain('The editable preview stays here and is not sent or saved.');
-    expect(root.querySelector('.capture-button')?.textContent).toBe('Capture this page');
-    expect(root.querySelector('.capture-preview')?.hasAttribute('hidden')).toBe(true);
-
-    const link = root.querySelector<HTMLAnchorElement>('.open-pwa');
+    expect(root.textContent).toContain('Run run_1 · received');
+    const link = root.querySelector<HTMLAnchorElement>('.run-result a');
     const url = new URL(link?.href ?? '');
-    expect(url.origin).toBe('https://talentfly.example');
+    expect(url.searchParams.get('runId')).toBe('run_1');
     expect(url.hash).toBe('#inbox');
-    expect(url.searchParams.get('extensionVersion')).toBe('0.1.0');
-    expect(url.searchParams.get('extensionCommit')).toBe('abc123');
-    expect(link?.target).toBe('_blank');
     expect(link?.rel).toContain('noopener');
   });
 
-  it('captures on explicit click and shows an editable preview without sending it', async () => {
-    const capture: JobCapture = {
-      title: 'Frontend Engineer',
-      company: 'Example Co',
-      location: 'Remote',
-      sourceUrl: 'https://jobs.example/123',
-      description: 'Build accessible web applications.',
-      descriptionTruncated: false,
+  it('reuses the same message ID when retrying so a run cannot be duplicated', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+    pwa.startReply = () => {
+      throw new Error('The TalentFly PWA did not respond in time. Retry the action.');
     };
-    let captureCalls = 0;
-    const sendCapture = vi.fn(async () => undefined);
-    renderPopup(root, 'https://talentfly.example', {
-      version: '0.1.0',
-      commit: 'abc123',
-      builtAt: '2026-11-11T00:00:00.000Z',
-    }, async () => {
-      captureCalls += 1;
-      return capture;
-    }, {
-      available: false,
-      request: async () => {
-        throw new Error('not used');
-      },
-      sendCapture,
-    });
+    runButton()?.click();
+    await flush();
+    expect(root.querySelector('.run-result')?.textContent).toBe('');
+    expect(root.querySelector('.card-error:not([hidden])')?.textContent).toContain('did not respond');
+    expect(connectionState()).toBe('disconnected');
 
-    expect(captureCalls).toBe(0);
-    root.querySelector<HTMLButtonElement>('.capture-button')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    pwa.startReply = undefined;
+    root.querySelector<HTMLButtonElement>('.connection-refresh')?.click();
+    await flush();
+    runButton()?.click();
+    await flush();
 
-    expect(captureCalls).toBe(1);
-    expect(root.querySelector<HTMLInputElement>('input[name="title"]')?.value).toBe(capture.title);
-    expect(root.querySelector<HTMLInputElement>('input[name="company"]')?.value).toBe(capture.company);
-    expect(root.querySelector<HTMLInputElement>('input[name="location"]')?.value).toBe(capture.location);
-    expect(root.querySelector<HTMLTextAreaElement>('textarea[name="description"]')?.value).toBe(
-      capture.description,
-    );
-    expect(root.textContent).toContain(`Source page: ${capture.sourceUrl}`);
-    expect(root.textContent).toContain('Preview ready. Edit any field before using it.');
-    expect(root.querySelector('form')).toBeNull();
+    const starts = pwa.calls.filter((call) => call.type === 'START_COMPARISON');
+    expect(starts).toHaveLength(2);
+    expect(starts[1].messageId).toBe(starts[0].messageId);
 
-    const title = root.querySelector<HTMLInputElement>('input[name="title"]');
-    const description = root.querySelector<HTMLTextAreaElement>('textarea[name="description"]');
-    if (title) {
-      title.value = 'Updated role title';
-      title.dispatchEvent(new Event('input'));
-    }
-    if (description) {
-      description.value = 'Reviewed job description';
-      description.dispatchEvent(new Event('input'));
-    }
-    root.querySelector<HTMLButtonElement>('.send-capture-button')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(sendCapture).toHaveBeenCalledWith(
-      'https://talentfly.example',
-      expect.objectContaining({
-        title: 'Updated role title',
-        description: 'Reviewed job description',
-      }),
-    );
+    // A different resume is a different run, so it gets a new message ID.
+    choose('resume_2');
+    runButton()?.click();
+    await flush();
+    const latest = pwa.calls.filter((call) => call.type === 'START_COMPARISON').at(-1);
+    expect(latest?.messageId).not.toBe(starts[0].messageId);
   });
 
-  it('shows capture errors and never leaves a success-shaped empty preview', async () => {
-    renderPopup(root, 'https://talentfly.example', {
-      version: '0.1.0',
-      commit: 'abc123',
-      builtAt: '2026-11-11T00:00:00.000Z',
-    }, async () => {
-      throw new Error('This page does not allow capture. Open a regular webpage and try again.');
-    });
+  it('shows a failed run status with its error', async () => {
+    pwa.startReply = (message) =>
+      createProtocolMessage(
+        'STATUS_UPDATE',
+        { runId: 'run_9', status: 'failed', error: 'Provider key is missing.' },
+        message.messageId,
+      );
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
+    await flush();
+    runButton()?.click();
+    await flush();
 
-    root.querySelector<HTMLButtonElement>('.capture-button')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(root.querySelector('[role="alert"]')?.textContent).toContain(
-      'This page does not allow capture.',
+    expect(root.querySelector('.run-result [role="alert"]')?.textContent).toBe(
+      'Provider key is missing.',
     );
-    expect(root.querySelector('.capture-preview')?.hasAttribute('hidden')).toBe(true);
+    expect(root.querySelector<HTMLAnchorElement>('.run-result a')?.href).toContain('runId=run_9');
   });
 
-  it('loads PWA job/resume metadata, validates selections, creates a run, and links to it', async () => {
-    const calls: ProtocolMessage[] = [];
-    const bridge = {
-      available: true,
-      async sendCapture() {},
-      async request(message: ProtocolMessage): Promise<ProtocolMessage> {
-        calls.push(message);
-        switch (message.type) {
-          case 'PING':
-            return createProtocolMessage('PONG', { ready: true }, message.messageId);
-          case 'LIST_RESUMES':
-            return createProtocolMessage(
-              'RESUMES',
-              { resumes: [{ id: 'resume_1', name: 'Frontend resume' }] },
-              message.messageId,
-            );
-          case 'LIST_JOBS':
-            return createProtocolMessage(
-              'JOBS',
-              { jobs: [{ id: 'job_1', title: 'Frontend Engineer', company: 'Example Co' }] },
-              message.messageId,
-            );
-          case 'START_COMPARISON':
-            return createProtocolMessage(
-              'STATUS_UPDATE',
-              { runId: 'run_1', status: 'received' },
-              message.messageId,
-            );
-          default:
-            throw new Error(`Unexpected message ${message.type}`);
-        }
-      },
-    };
+  it('re-reads the page right before creating the run and sends the fresh values', async () => {
+    let version = 0;
+    const extract = vi.fn(async () => {
+      version += 1;
+      return version === 1
+        ? capture
+        : { ...capture, title: 'Updated title', otherFields: { Reference: 'REF-8' } };
+    });
+    renderPopup(root, ORIGIN, buildInfo, extract, bridgeFor(pwa));
+    await flush();
+    runButton()?.click();
+    await flush();
 
-    renderPopup(root, 'https://talentfly.example', {
-      version: '0.1.0',
-      commit: 'abc123',
-      builtAt: '2026-11-11T00:00:00.000Z',
-    }, undefined, bridge);
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(root.textContent).toContain('Connected · 1 saved jobs · 1 resumes');
-    expect(root.textContent).toContain('Frontend resume');
-
-    const resumeCheckbox = root.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    expect(resumeCheckbox?.value).toBe('resume_1');
-    resumeCheckbox?.click();
-    const jobSelect = root.querySelector<HTMLSelectElement>('select[name="saved-job"]');
-    if (jobSelect) {
-      jobSelect.value = 'job_1';
-      jobSelect.dispatchEvent(new Event('change'));
-    }
-
-    const runButton = root.querySelector<HTMLButtonElement>('.handoff-controls .button-primary');
-    expect(runButton?.disabled).toBe(false);
-    runButton?.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(calls.at(-1)).toMatchObject({
+    expect(extract).toHaveBeenCalledTimes(2);
+    expect(pwa.calls.at(-1)).toMatchObject({
       type: 'START_COMPARISON',
-      payload: { jobId: 'job_1', resumeIds: ['resume_1'] },
+      payload: { job: { title: 'Updated title', otherFields: { Reference: 'REF-8' } } },
     });
-    expect(root.textContent).toContain('Run run_1 · received');
-    const runLink = root.querySelector<HTMLAnchorElement>('.run-result a');
-    const runUrl = new URL(runLink?.href ?? '');
-    expect(runUrl.searchParams.get('runId')).toBe('run_1');
-    expect(runUrl.hash).toBe('#inbox');
+    expect(root.querySelector('.job-field-value')?.textContent).toBe('Updated title');
   });
 
-  const buildInfo = { version: '0.1.0', commit: 'abc123', builtAt: '2026-11-11T00:00:00.000Z' };
-  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-  it('offers an explicit open and retry action when the PWA is unreachable, then recovers', async () => {
-    let reachable = false;
-    const request = vi.fn(async (message: ProtocolMessage): Promise<ProtocolMessage> => {
-      if (!reachable) throw new Error('Open the TalentFly PWA, then retry this action.');
-      switch (message.type) {
-        case 'PING':
-          return createProtocolMessage('PONG', { ready: true }, message.messageId);
-        case 'LIST_RESUMES':
-          return createProtocolMessage('RESUMES', { resumes: [{ id: 'resume_1', name: 'CV' }] }, message.messageId);
-        case 'LIST_JOBS':
-          return createProtocolMessage('JOBS', { jobs: [{ id: 'job_1', title: 'Engineer' }] }, message.messageId);
-        default:
-          throw new Error(`Unexpected ${message.type}`);
-      }
+  it('does not send anything when the pre-run re-read fails', async () => {
+    let calls = 0;
+    const extract = vi.fn(async () => {
+      calls += 1;
+      if (calls > 1) throw new Error('The job description was not found on this whoz.com page.');
+      return capture;
     });
-    renderPopup(root, 'https://talentfly.example', buildInfo, undefined, {
-      available: true,
-      request,
-      async sendCapture() {},
-    });
+    renderPopup(root, ORIGIN, buildInfo, extract, bridgeFor(pwa));
+    await flush();
+    runButton()?.click();
     await flush();
 
-    expect(root.querySelector('.handoff-card [role="alert"]')?.textContent).toContain('Open the TalentFly PWA');
-    const recovery = root.querySelector<HTMLElement>('.recovery-actions');
-    expect(recovery?.hidden).toBe(false);
-    expect(root.querySelector<HTMLAnchorElement>('.recovery-actions a')?.href).toBe(
-      'https://talentfly.example/#inbox',
-    );
-    expect(root.querySelector<HTMLElement>('.handoff-controls')?.hidden).toBe(true);
-
-    reachable = true;
-    root.querySelector<HTMLButtonElement>('.recovery-actions button')?.click();
-    await flush();
-    expect(root.textContent).toContain('Connected · 1 saved jobs · 1 resumes');
-    expect(root.querySelector<HTMLElement>('.recovery-actions')?.hidden).toBe(true);
+    expect(pwa.calls.some((call) => call.type === 'START_COMPARISON')).toBe(false);
+    expect(root.querySelector('.card-error:not([hidden])')?.textContent).toContain('description was not found');
   });
 
-  it('requires a resume selection and keeps selections when run creation fails', async () => {
-    const request = vi.fn(async (message: ProtocolMessage): Promise<ProtocolMessage> => {
-      switch (message.type) {
-        case 'PING':
-          return createProtocolMessage('PONG', { ready: true }, message.messageId);
-        case 'LIST_RESUMES':
-          return createProtocolMessage('RESUMES', { resumes: [{ id: 'resume_1', name: 'CV' }] }, message.messageId);
-        case 'LIST_JOBS':
-          return createProtocolMessage('JOBS', { jobs: [{ id: 'job_1', title: 'Engineer' }] }, message.messageId);
-        case 'START_COMPARISON':
-          throw new Error('The TalentFly PWA did not respond in time. Retry the action.');
-        default:
-          throw new Error(`Unexpected ${message.type}`);
-      }
-    });
-    renderPopup(root, 'https://talentfly.example', buildInfo, undefined, {
-      available: true,
-      request,
-      async sendCapture() {},
-    });
+  it('shows an actionable message when the extension background worker is out of date', async () => {
+    const bridge = {
+      ...bridgeFor(pwa),
+      checkWorker: async () => {
+        throw new Error('The TalentFly extension background worker is out of date or not running. Reload TalentFly on chrome://extensions, then reopen this popup.');
+      },
+    };
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridge);
     await flush();
 
-    const jobSelect = root.querySelector<HTMLSelectElement>('select[name="saved-job"]');
-    const runButton = root.querySelector<HTMLButtonElement>('.handoff-controls .button-primary');
-    if (jobSelect) {
-      jobSelect.value = 'job_1';
-      jobSelect.dispatchEvent(new Event('change'));
-    }
-    expect(runButton?.disabled).toBe(true);
-
-    root.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click();
-    expect(runButton?.disabled).toBe(false);
-    runButton?.click();
-    await flush();
-
-    expect(root.querySelector('.handoff-card [role="alert"]')?.textContent).toContain('did not respond in time');
-    expect(root.querySelector<HTMLElement>('.recovery-actions')?.hidden).toBe(false);
-    expect(root.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
-    expect(runButton?.disabled).toBe(false);
-    expect(root.querySelector<HTMLElement>('.run-result')?.hidden).toBe(true);
+    expect(connectionState()).toBe('disconnected');
+    expect(root.querySelector('.connection-error')?.textContent).toContain('Reload TalentFly on chrome://extensions');
+    expect(pwa.calls).toEqual([]);
+    expect(runButton()?.disabled).toBe(true);
   });
 
-  it('surfaces a failed run status with its error and still links to the run', async () => {
-    const request = vi.fn(async (message: ProtocolMessage): Promise<ProtocolMessage> => {
-      switch (message.type) {
-        case 'PING':
-          return createProtocolMessage('PONG', { ready: true }, message.messageId);
-        case 'LIST_RESUMES':
-          return createProtocolMessage('RESUMES', { resumes: [{ id: 'resume_1', name: 'CV' }] }, message.messageId);
-        case 'LIST_JOBS':
-          return createProtocolMessage('JOBS', { jobs: [{ id: 'job_1', title: 'Engineer' }] }, message.messageId);
-        case 'START_COMPARISON':
-          return createProtocolMessage(
-            'STATUS_UPDATE',
-            { runId: 'run_9', status: 'failed', error: 'Provider key is missing.' },
-            message.messageId,
-          );
-        default:
-          throw new Error(`Unexpected ${message.type}`);
-      }
-    });
-    renderPopup(root, 'https://talentfly.example', buildInfo, undefined, {
-      available: true,
-      request,
-      async sendCapture() {},
-    });
+  it('shows the reason a connection failed and keeps the Open TalentFly link', async () => {
+    pwa.reachable = false;
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
     await flush();
-    const jobSelect = root.querySelector<HTMLSelectElement>('select[name="saved-job"]');
-    if (jobSelect) {
-      jobSelect.value = 'job_1';
-      jobSelect.dispatchEvent(new Event('change'));
-    }
-    root.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click();
-    root.querySelector<HTMLButtonElement>('.handoff-controls .button-primary')?.click();
-    await flush();
+    expect(root.querySelector('.connection-error')?.textContent).toContain('Open the TalentFly PWA');
+    expect(root.querySelector<HTMLAnchorElement>('.connection-hint a')?.href).toBe(`${ORIGIN}/#inbox`);
+    expect(root.querySelector<HTMLElement>('.connection-hint')?.hidden).toBe(false);
+  });
 
-    expect(root.querySelector('.run-result [role="alert"]')?.textContent).toBe('Provider key is missing.');
-    expect(new URL(root.querySelector<HTMLAnchorElement>('.run-result a')?.href ?? '').searchParams.get('runId')).toBe('run_9');
+  it('shows the PWA ERROR message when the run is rejected', async () => {
+    renderPopup(root, ORIGIN, buildInfo, async () => capture, {
+      ...bridgeFor(pwa),
+      async request(message: ProtocolMessage) {
+        if (message.type === 'START_COMPARISON') {
+          throw new Error('One or more selected resumes are no longer available.');
+        }
+        return bridgeFor(pwa).request(message);
+      },
+    });
+    await flush();
+    runButton()?.click();
+    await flush();
+    expect(root.querySelector('.card-error:not([hidden])')?.textContent).toContain('no longer available');
   });
 });

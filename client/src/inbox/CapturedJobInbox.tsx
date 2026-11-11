@@ -31,6 +31,23 @@ function messageFrom(error: unknown): string {
   return error instanceof Error ? error.message : 'The extension message could not be processed.';
 }
 
+function OtherFields({ fields }: { fields?: Record<string, string> }) {
+  const entries = Object.entries(fields ?? {});
+  if (entries.length === 0) {
+    return null;
+  }
+  return (
+    <dl className="inbox-other-fields">
+      {entries.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function createJobRecord(messageId: string, job: CapturedJob): JobRecord {
   const now = new Date().toISOString();
   return {
@@ -41,6 +58,7 @@ function createJobRecord(messageId: string, job: CapturedJob): JobRecord {
     location: job.location || undefined,
     sourceUrl: job.sourceUrl,
     description: job.description,
+    ...(job.otherFields ? { otherFields: job.otherFields } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -92,7 +110,37 @@ export function CapturedJobInbox({
     let openPromise: Promise<void>;
     const allowedOrigins = [window.location.origin];
 
+    const REQUEST_TYPES = new Set(['PING', 'LIST_RESUMES', 'LIST_JOBS', 'START_COMPARISON']);
+
+    function errorReply(
+      messageId: string,
+      error: unknown,
+    ): ProtocolMessage {
+      const text = messageFrom(error);
+      const code = /no longer|could not be found/i.test(text)
+        ? 'NOT_FOUND'
+        : /choose one or more|distinct|idempotency/i.test(text)
+          ? 'INVALID_REQUEST'
+          : 'INTERNAL';
+      return createProtocolMessage('ERROR', { code, message: text.slice(0, 500) }, messageId);
+    }
+
+    /** Runs a request and answers failures with an ERROR reply instead of staying silent. */
     const processMessage = async (
+      message: ProtocolMessage,
+      respond: (response: ProtocolMessage) => void,
+    ): Promise<void> => {
+      try {
+        await handleMessage(message, respond);
+      } catch (processingError) {
+        if (REQUEST_TYPES.has(message.type)) {
+          respond(errorReply(message.messageId, processingError));
+        }
+        throw processingError;
+      }
+    };
+
+    const handleMessage = async (
       message: ProtocolMessage,
       respond: (response: ProtocolMessage) => void,
     ): Promise<void> => {
@@ -163,9 +211,12 @@ export function CapturedJobInbox({
           return;
         }
         case 'START_COMPARISON': {
+          const savedJob = await services.saveCapturedJob(
+            createJobRecord(message.messageId, message.payload.job),
+          );
           const run = await services.createComparisonRun({
             idempotencyKey: message.messageId,
-            jobId: message.payload.jobId,
+            jobId: savedJob.id,
             resumeIds: message.payload.resumeIds,
           });
           await refresh();
@@ -239,6 +290,35 @@ export function CapturedJobInbox({
                     setError(messageFrom(processingError));
                   }
                 });
+              },
+              undefined,
+              (rawMessage, validationError) => {
+                if (!active) {
+                  return;
+                }
+                setError(`The extension sent a message this app cannot use. ${validationError.message}`);
+                const messageId =
+                  typeof rawMessage === 'object' && rawMessage !== null && 'messageId' in rawMessage
+                    ? (rawMessage as { messageId: unknown }).messageId
+                    : undefined;
+                if (typeof messageId === 'string') {
+                  try {
+                    extensionPort?.postMessage(
+                      createProtocolMessage(
+                        'ERROR',
+                        {
+                          code: validationError.message.startsWith('Unsupported protocol version')
+                            ? 'UNSUPPORTED_VERSION'
+                            : 'INVALID_REQUEST',
+                          message: validationError.message.slice(0, 500),
+                        },
+                        messageId,
+                      ),
+                    );
+                  } catch {
+                    // The offending message ID was not usable; the on-screen error is enough.
+                  }
+                }
               },
             );
           } catch (connectionError) {
@@ -367,6 +447,7 @@ export function CapturedJobInbox({
                     {[capture.job.company, capture.job.location].filter(Boolean).join(' · ') ||
                       'Company and location not detected'}
                   </p>
+                  <OtherFields fields={capture.job.otherFields} />
                   <p className="inbox-job-source">{capture.job.sourceUrl}</p>
                   <details>
                     <summary>Review job description</summary>
@@ -399,6 +480,7 @@ export function CapturedJobInbox({
                   <div>
                     <h4>{job.title}</h4>
                     <p>{[job.company, job.location].filter(Boolean).join(' · ')}</p>
+                    <OtherFields fields={job.otherFields} />
                     <a href={job.sourceUrl} target="_blank" rel="noreferrer">
                       View source page
                     </a>

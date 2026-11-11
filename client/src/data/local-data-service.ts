@@ -227,7 +227,12 @@ function validateExport(value: unknown): ValidatedLocalData {
       (record.captureMessageId === undefined || isText(record.captureMessageId)) &&
       (record.company === undefined || isText(record.company)) &&
       (record.location === undefined || isText(record.location)) &&
-      (record.sourceUrl === undefined || isText(record.sourceUrl)),
+      (record.sourceUrl === undefined || isText(record.sourceUrl)) &&
+      (record.otherFields === undefined ||
+        (typeof record.otherFields === 'object' &&
+          record.otherFields !== null &&
+          !Array.isArray(record.otherFields) &&
+          Object.values(record.otherFields).every(isText))),
     'job',
   );
   const runs = validateRecords<ComparisonRunRecord>(

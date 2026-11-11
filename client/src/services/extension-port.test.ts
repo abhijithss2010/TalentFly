@@ -69,10 +69,13 @@ describe('PWA extension port client', () => {
   it('delivers unsolicited validated captures and rejects malformed port messages', () => {
     const port = new MockPort();
     const onUnsolicited = vi.fn();
+    const onInvalid = vi.fn();
     const client = new ExtensionPortClient(
       createRuntime(port),
       extensionId,
       onUnsolicited,
+      15_000,
+      onInvalid,
     );
     const capture = createProtocolMessage(
       'JOB_CAPTURED',
@@ -91,6 +94,10 @@ describe('PWA extension port client', () => {
     port.receive(capture);
     port.receive({ ...capture, protocolVersion: 99 });
 
+    expect(onInvalid).toHaveBeenCalledWith(
+      expect.objectContaining({ protocolVersion: 99 }),
+      expect.objectContaining({ message: expect.stringContaining('Unsupported protocol version 99') }),
+    );
     expect(onUnsolicited).toHaveBeenCalledTimes(1);
     expect(onUnsolicited).toHaveBeenCalledWith(capture);
     client.close();

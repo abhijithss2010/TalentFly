@@ -1,4 +1,5 @@
 import {
+  PROTOCOL_VERSION,
   validatePwaMessage,
   validateProtocolMessage,
   type ProtocolMessage,
@@ -9,7 +10,6 @@ import { resolvePwaOrigin } from './pwa-origin';
 const PORT_NAME = 'talentfly-protocol-v1';
 const RELAY_CHANNEL = 'talentfly-popup-relay-v1';
 const REQUEST_TIMEOUT_MS = 15_000;
-const PENDING_CAPTURE_KEY = 'talentflyPendingCapture';
 
 const configuredOrigin = import.meta.env.VITE_TALENTFLY_PWA_ORIGIN;
 const pwaOrigin = resolvePwaOrigin(configuredOrigin, import.meta.env.MODE);
@@ -39,18 +39,28 @@ function isRelayRequest(value: unknown): value is {
   );
 }
 
+function isHello(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'channel' in value &&
+    value.channel === RELAY_CHANNEL &&
+    'hello' in value &&
+    value.hello === true
+  );
+}
+
+/** Every request may also be answered with ERROR when the PWA rejects or fails it. */
 function expectedResponseTypes(type: ProtocolMessageType): ProtocolMessageType[] {
   switch (type) {
     case 'PING':
-      return ['PONG'];
+      return ['PONG', 'ERROR'];
     case 'LIST_RESUMES':
-      return ['RESUMES'];
+      return ['RESUMES', 'ERROR'];
     case 'LIST_JOBS':
-      return ['JOBS'];
-    case 'JOB_CAPTURED':
-      return ['CAPTURE_ACK'];
+      return ['JOBS', 'ERROR'];
     case 'START_COMPARISON':
-      return ['STATUS_UPDATE'];
+      return ['STATUS_UPDATE', 'ERROR'];
     default:
       return [];
   }
@@ -64,7 +74,7 @@ chrome.runtime.onConnectExternal.addListener((port) => {
 
   try {
     validatePwaMessage(
-      { protocolVersion: 1, messageId: 'validation', type: 'PING', payload: {} },
+      { protocolVersion: 2, messageId: 'validation', type: 'PING', payload: {} },
       {
         origin: port.sender.origin ?? new URL(port.sender.url ?? '').origin,
         extensionId: port.sender.id,
@@ -79,23 +89,6 @@ chrome.runtime.onConnectExternal.addListener((port) => {
   }
 
   pwaPorts.add(port);
-  void chrome.storage.session.get(PENDING_CAPTURE_KEY).then((stored) => {
-    const pending = stored[PENDING_CAPTURE_KEY] as
-      | { createdAt: number; message: ProtocolMessage }
-      | undefined;
-    if (!pending) {
-      return;
-    }
-    if (Date.now() - pending.createdAt > 30 * 60 * 1000) {
-      void chrome.storage.session.remove(PENDING_CAPTURE_KEY);
-      return;
-    }
-    try {
-      port.postMessage(validateProtocolMessage(pending.message));
-    } catch {
-      // The service worker will retry the still-pending capture on the next PWA connection.
-    }
-  });
   port.onMessage.addListener((rawMessage: unknown) => {
     let message: ProtocolMessage;
     try {
@@ -111,17 +104,6 @@ chrome.runtime.onConnectExternal.addListener((port) => {
       );
     } catch {
       return;
-    }
-
-    if (message.type === 'CAPTURE_ACK') {
-      void chrome.storage.session.get(PENDING_CAPTURE_KEY).then((stored) => {
-        const pending = stored[PENDING_CAPTURE_KEY] as
-          | { message: ProtocolMessage }
-          | undefined;
-        if (pending?.message.messageId === message.messageId) {
-          return chrome.storage.session.remove(PENDING_CAPTURE_KEY);
-        }
-      });
     }
 
     const pending = pendingRequests.get(message.messageId);
@@ -145,7 +127,14 @@ chrome.runtime.onConnectExternal.addListener((port) => {
 });
 
 chrome.runtime.onMessage.addListener((rawRequest, sender, sendResponse) => {
-  if (sender.id !== expectedExtensionId || !isRelayRequest(rawRequest)) {
+  if (sender.id !== expectedExtensionId) {
+    return false;
+  }
+  if (isHello(rawRequest)) {
+    sendResponse({ hello: true, protocolVersion: PROTOCOL_VERSION });
+    return false;
+  }
+  if (!isRelayRequest(rawRequest)) {
     return false;
   }
 

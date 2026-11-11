@@ -1,6 +1,16 @@
-export const PROTOCOL_VERSION = 1;
+/**
+ * Bump when a message payload changes incompatibly (v2: START_COMPARISON carries `job`
+ * instead of `jobId`, and the ERROR response was added).
+ */
+export const PROTOCOL_VERSION = 2;
 export const MAX_PROTOCOL_MESSAGE_BYTES = 256 * 1024;
 export const MAX_JOB_DESCRIPTION_LENGTH = 20_000;
+export const MAX_JOB_FIELD_LENGTH = 200;
+export const MAX_OTHER_FIELDS = 10;
+export const MAX_OTHER_FIELD_KEY_LENGTH = 100;
+export const MAX_OTHER_FIELD_VALUE_LENGTH = 2_000;
+export const MAX_COMPARISON_RESUME_COUNT = 5;
+export const ERROR_CODES = ['INVALID_REQUEST', 'UNSUPPORTED_VERSION', 'NOT_FOUND', 'INTERNAL'];
 
 const MESSAGE_TYPES = new Set([
   'PING',
@@ -13,13 +23,13 @@ const MESSAGE_TYPES = new Set([
   'RESUMES',
   'START_COMPARISON',
   'STATUS_UPDATE',
+  'ERROR',
 ]);
 const RUN_STATUSES = new Set(['received', 'analysing', 'done', 'failed']);
 const MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const RECORD_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-const MAX_JOB_FIELD_LENGTH = 200;
 const MAX_RESUME_COUNT = 50;
-const MAX_COMPARISON_RESUME_COUNT = 5;
+const FORBIDDEN_FIELD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export class ProtocolValidationError extends Error {
   constructor(message) {
@@ -55,9 +65,28 @@ function validText(value, maxLength, allowEmpty = false) {
     (allowEmpty || value.trim().length > 0);
 }
 
+function validateOtherFields(value) {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const entries = Object.entries(value);
+  return (
+    entries.length <= MAX_OTHER_FIELDS &&
+    entries.every(
+      ([key, fieldValue]) =>
+        key.trim().length > 0 &&
+        key.length <= MAX_OTHER_FIELD_KEY_LENGTH &&
+        !FORBIDDEN_FIELD_KEYS.has(key) &&
+        validText(fieldValue, MAX_OTHER_FIELD_VALUE_LENGTH),
+    )
+  );
+}
+
 function validateJob(value) {
+  const baseKeys = ['title', 'company', 'location', 'sourceUrl', 'description'];
   if (
-    !exactKeys(value, ['title', 'company', 'location', 'sourceUrl', 'description']) ||
+    !(exactKeys(value, baseKeys) ||
+      (exactKeys(value, [...baseKeys, 'otherFields']) && validateOtherFields(value.otherFields))) ||
     !validText(value.title, MAX_JOB_FIELD_LENGTH, true) ||
     !validText(value.company, MAX_JOB_FIELD_LENGTH, true) ||
     !validText(value.location, MAX_JOB_FIELD_LENGTH, true) ||
@@ -77,6 +106,67 @@ function validateJob(value) {
   } catch {
     return false;
   }
+}
+
+/** Names the first job field that breaks the contract, or '' when the job is valid. */
+function describeJobProblem(job) {
+  if (!isRecord(job)) return 'job must be an object';
+  const allowed = new Set(['title', 'company', 'location', 'sourceUrl', 'description', 'otherFields']);
+  const unknown = Object.keys(job).find((key) => !allowed.has(key));
+  if (unknown) return `job.${unknown} is not part of the contract`;
+  for (const key of ['title', 'company', 'location']) {
+    if (typeof job[key] !== 'string') return `job.${key} must be text`;
+    if (job[key].length > MAX_JOB_FIELD_LENGTH) {
+      return `job.${key} is longer than ${MAX_JOB_FIELD_LENGTH} characters`;
+    }
+  }
+  if (typeof job.description !== 'string' || job.description.trim().length === 0) {
+    return 'job.description must not be empty';
+  }
+  if (job.description.length > MAX_JOB_DESCRIPTION_LENGTH) {
+    return `job.description is longer than ${MAX_JOB_DESCRIPTION_LENGTH} characters`;
+  }
+  if (typeof job.sourceUrl !== 'string') return 'job.sourceUrl must be text';
+  try {
+    const url = new URL(job.sourceUrl);
+    const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname);
+    if ((url.protocol !== 'https:' && !localHttp) || url.username || url.password) {
+      return 'job.sourceUrl must be an https URL without credentials';
+    }
+  } catch {
+    return 'job.sourceUrl is not a valid URL';
+  }
+  if (job.otherFields !== undefined && !validateOtherFields(job.otherFields)) {
+    return `job.otherFields must have at most ${MAX_OTHER_FIELDS} non-empty text values (keys up to ${MAX_OTHER_FIELD_KEY_LENGTH} and values up to ${MAX_OTHER_FIELD_VALUE_LENGTH} characters)`;
+  }
+  return '';
+}
+
+function describePayloadProblem(type, payload) {
+  if (!isRecord(payload)) return 'the payload must be an object';
+  if (type === 'START_COMPARISON' || type === 'JOB_CAPTURED') {
+    if (!Object.hasOwn(payload, 'job')) {
+      return type === 'START_COMPARISON' && Object.hasOwn(payload, 'jobId')
+        ? 'it still uses the old "jobId" field; the job details are now sent in "job" (an older extension or app build is running)'
+        : 'the "job" field is missing';
+    }
+    const problem = describeJobProblem(payload.job);
+    if (problem) return problem;
+    if (type === 'START_COMPARISON') {
+      const ids = payload.resumeIds;
+      if (!Array.isArray(ids) || ids.length === 0) return 'resumeIds must list at least one resume';
+      if (ids.length > MAX_COMPARISON_RESUME_COUNT) {
+        return `resumeIds may list at most ${MAX_COMPARISON_RESUME_COUNT} resumes`;
+      }
+      if (!ids.every((id) => typeof id === 'string' && RECORD_ID_PATTERN.test(id))) {
+        return 'resumeIds contains an invalid resume ID';
+      }
+      if (new Set(ids).size !== ids.length) return 'resumeIds contains duplicates';
+      const extra = Object.keys(payload).find((key) => key !== 'job' && key !== 'resumeIds');
+      if (extra) return `"${extra}" is not part of the contract`;
+    }
+  }
+  return 'the payload has an unexpected shape';
 }
 
 function validatePayload(type, payload) {
@@ -130,14 +220,19 @@ function validatePayload(type, payload) {
       );
     case 'START_COMPARISON':
       return (
-        exactKeys(payload, ['jobId', 'resumeIds']) &&
-        typeof payload.jobId === 'string' &&
-        RECORD_ID_PATTERN.test(payload.jobId) &&
+        exactKeys(payload, ['job', 'resumeIds']) &&
+        validateJob(payload.job) &&
         Array.isArray(payload.resumeIds) &&
         payload.resumeIds.length > 0 &&
         payload.resumeIds.length <= MAX_COMPARISON_RESUME_COUNT &&
         payload.resumeIds.every((id) => typeof id === 'string' && RECORD_ID_PATTERN.test(id)) &&
         new Set(payload.resumeIds).size === payload.resumeIds.length
+      );
+    case 'ERROR':
+      return (
+        exactKeys(payload, ['code', 'message']) &&
+        ERROR_CODES.includes(payload.code) &&
+        validText(payload.message, 500)
       );
     case 'STATUS_UPDATE':
       return (
@@ -154,16 +249,22 @@ function validatePayload(type, payload) {
 }
 
 export function validateProtocolMessage(value) {
-  if (
-    !exactKeys(value, ['protocolVersion', 'messageId', 'type', 'payload']) ||
-    value.protocolVersion !== PROTOCOL_VERSION ||
-    typeof value.messageId !== 'string' ||
-    !MESSAGE_ID_PATTERN.test(value.messageId) ||
-    typeof value.type !== 'string' ||
-    !MESSAGE_TYPES.has(value.type) ||
-    !validatePayload(value.type, value.payload)
-  ) {
-    fail('The extension message has an invalid shape or unsupported protocol version.');
+  if (!exactKeys(value, ['protocolVersion', 'messageId', 'type', 'payload'])) {
+    fail('The extension message is not a TalentFly protocol message.');
+  }
+  if (value.protocolVersion !== PROTOCOL_VERSION) {
+    fail(
+      `Unsupported protocol version ${String(value.protocolVersion)}; this build speaks version ${PROTOCOL_VERSION}. Reload the TalentFly extension on chrome://extensions and refresh the TalentFly tab.`,
+    );
+  }
+  if (typeof value.messageId !== 'string' || !MESSAGE_ID_PATTERN.test(value.messageId)) {
+    fail('The extension message has an invalid message ID.');
+  }
+  if (typeof value.type !== 'string' || !MESSAGE_TYPES.has(value.type)) {
+    fail(`The extension message type "${String(value.type)}" is not supported by this build.`);
+  }
+  if (!validatePayload(value.type, value.payload)) {
+    fail(`The "${value.type}" message is invalid: ${describePayloadProblem(value.type, value.payload)}.`);
   }
 
   let serialized;

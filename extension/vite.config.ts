@@ -17,7 +17,7 @@ function extensionManifestPlugin(pwaOrigin: string): Plugin {
         'utf8',
       );
       const manifest = JSON.parse(sourceManifest) as Record<string, unknown>;
-      manifest.permissions = ['activeTab', 'scripting', 'storage'];
+      manifest.permissions = ['activeTab', 'scripting'];
       manifest.background = { service_worker: 'service-worker.js', type: 'module' };
       manifest.externally_connectable = {
         matches: [pwaMatchPattern(pwaOrigin)],

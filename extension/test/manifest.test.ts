@@ -23,7 +23,7 @@ describe('extension workspace', () => {
     expect(manifest.name).toBe('TalentFly');
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(manifest.version).toBe(packageJson.version);
-    expect(manifest.permissions ?? []).toEqual(['activeTab', 'scripting', 'storage']);
+    expect(manifest.permissions ?? []).toEqual(['activeTab', 'scripting']);
     expect(manifest.host_permissions ?? []).toEqual([]);
     expect(manifest.action?.default_popup).toBe('popup.html');
     expect(manifest.background).toEqual({ service_worker: 'service-worker.js', type: 'module' });

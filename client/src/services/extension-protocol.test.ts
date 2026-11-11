@@ -51,7 +51,7 @@ describe('PWA extension message boundary', () => {
     });
     expect(() =>
       validateExtensionWindowMessage(invalidMessage, extensionId, allowedPwaOrigins),
-    ).toThrow('invalid shape');
+    ).toThrow('Unsupported protocol version 99');
     extensionWindow.remove();
   });
 });
