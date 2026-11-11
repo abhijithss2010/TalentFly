@@ -52,8 +52,8 @@ async function setup(options: { hasKey?: boolean; unlocked?: boolean } = {}) {
   await services.resumes.save({
     id: resumeId,
     name: 'My resume',
-    fileName: 'r.pdf',
-    mimeType: 'application/pdf',
+    fileName: 'r.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     fileSize: 1,
     file: new Blob(['x']),
     extractedText: 'Ran Kubernetes clusters for four years.',

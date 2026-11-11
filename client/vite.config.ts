@@ -32,9 +32,6 @@ function serviceWorkerPlugin(): Plugin {
 }
 
 export default defineConfig({
-  optimizeDeps: {
-    exclude: ['pdfjs-dist'],
-  },
   define: {
     __TALENTFLY_BUILD_INFO__: JSON.stringify(
       createBuildInfo(fileURLToPath(new URL('./package.json', import.meta.url))),

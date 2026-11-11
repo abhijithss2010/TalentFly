@@ -101,8 +101,8 @@ export async function seedRun(
   await services.resumes.save({
     id: resumeId,
     name: 'Platform resume',
-    fileName: 'platform.pdf',
-    mimeType: 'application/pdf',
+    fileName: 'platform.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     fileSize: 1,
     file: new Blob(['x']),
     extractedText: 'Ran Kubernetes clusters for four years.',

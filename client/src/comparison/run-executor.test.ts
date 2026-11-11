@@ -77,8 +77,8 @@ async function seed(services: LocalDataServices, resumeTexts = ['Ran Kubernetes 
     await services.resumes.save({
       id,
       name: `Resume ${index + 1}`,
-      fileName: 'r.pdf',
-      mimeType: 'application/pdf',
+      fileName: 'r.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       fileSize: 1,
       file: new Blob(['x']),
       extractedText: text,

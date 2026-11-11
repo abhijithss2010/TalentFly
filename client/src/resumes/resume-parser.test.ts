@@ -1,20 +1,11 @@
 import { strToU8, zipSync } from 'fflate';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   MAX_RESUME_FILE_SIZE,
   MAX_EXTRACTED_TEXT_LENGTH,
-  MAX_PDF_PAGES,
   parseResumeContent,
-  parseResumeFile,
   validateResumeFile,
 } from './resume-parser';
-
-const pdfjsMock = vi.hoisted(() => ({
-  getDocument: vi.fn(),
-  GlobalWorkerOptions: { workerSrc: '' },
-}));
-
-vi.mock('pdfjs-dist', () => pdfjsMock);
 
 function officeFile(entries: Record<string, string>, name: string): File {
   const zipEntries = Object.fromEntries(
@@ -24,9 +15,7 @@ function officeFile(entries: Record<string, string>, name: string): File {
 }
 
 describe('resume parser', () => {
-  it('accepts supported formats and rejects unsupported, mismatched, and oversized files', () => {
-    expect(validateResumeFile(new File(['pdf'], 'resume.pdf', { type: 'application/pdf' })))
-      .toBe('pdf');
+  it('accepts only DOCX and rejects other, mismatched, and oversized files', () => {
     expect(
       validateResumeFile(
         new File(['doc'], 'resume.docx', {
@@ -34,13 +23,19 @@ describe('resume parser', () => {
         }),
       ),
     ).toBe('docx');
-    expect(() => validateResumeFile(new File(['txt'], 'resume.txt', { type: 'text/plain' })))
-      .toThrow('Choose a PDF, DOCX, or PPTX resume file.');
+    for (const name of ['resume.pdf', 'deck.pptx', 'resume.doc', 'resume.txt', 'resume']) {
+      expect(() => validateResumeFile(new File(['x'], name))).toThrow(
+        'Choose a DOCX resume file.',
+      );
+    }
     expect(() =>
-      validateResumeFile(new File(['pdf'], 'resume.pdf', { type: 'text/plain' })),
-    ).toThrow('The file type does not match the .pdf extension.');
+      validateResumeFile(new File(['doc'], 'resume.docx', { type: 'text/plain' })),
+    ).toThrow('The file type does not match the .docx extension.');
+    expect(() => validateResumeFile(new File([], 'empty.docx'))).toThrow(
+      'The selected resume file is empty.',
+    );
 
-    const oversized = new File(['pdf'], 'large.pdf', { type: 'application/pdf' });
+    const oversized = new File(['doc'], 'large.docx');
     Object.defineProperty(oversized, 'size', { value: MAX_RESUME_FILE_SIZE + 1 });
     expect(() => validateResumeFile(oversized)).toThrow('Resume files must be 15 MB or smaller.');
   });
@@ -59,20 +54,13 @@ describe('resume parser', () => {
     );
   });
 
-  it('extracts PPTX slide text in slide-number order', async () => {
-    const file = officeFile(
-      {
-        'ppt/slides/slide2.xml':
-          '<p:sld xmlns:p="urn:p" xmlns:a="urn:a"><p:cSld><a:p><a:r><a:t>Second slide</a:t></a:r></a:p></p:cSld></p:sld>',
-        'ppt/slides/slide1.xml':
-          '<p:sld xmlns:p="urn:p" xmlns:a="urn:a"><p:cSld><a:p><a:r><a:t>First slide</a:t></a:r></a:p></p:cSld></p:sld>',
-      },
-      'portfolio.pptx',
-    );
-
-    await expect(parseResumeContent(file, file.name)).resolves.toBe(
-      'First slide\nSecond slide',
-    );
+  it('refuses PDF and PPTX content even when it is parsed directly', async () => {
+    await expect(
+      parseResumeContent(new File(['%PDF'], 'resume.pdf'), 'resume.pdf'),
+    ).rejects.toThrow('Choose a DOCX resume file.');
+    await expect(
+      parseResumeContent(new File(['zip'], 'deck.pptx'), 'deck.pptx'),
+    ).rejects.toThrow('Choose a DOCX resume file.');
   });
 
   it('reports damaged Office archives and image-only documents explicitly', async () => {
@@ -89,16 +77,7 @@ describe('resume parser', () => {
     );
   });
 
-  it('enforces PDF page and extracted-text limits', async () => {
-    const pdf = new File(['pdf-data'], 'resume.pdf', { type: 'application/pdf' });
-    pdfjsMock.getDocument.mockReturnValue({
-      promise: Promise.resolve({ numPages: MAX_PDF_PAGES + 1 }),
-      destroy: vi.fn(),
-    });
-    await expect(parseResumeContent(pdf, pdf.name)).rejects.toThrow(
-      'PDF resumes must contain 500 pages or fewer.',
-    );
-
+  it('enforces the extracted-text limit', async () => {
     const longDocument = officeFile(
       {
         'word/document.xml':
@@ -108,35 +87,6 @@ describe('resume parser', () => {
     );
     await expect(parseResumeContent(longDocument, longDocument.name)).rejects.toThrow(
       'The extracted text is larger than the 500,000 character limit.',
-    );
-  });
-
-  it('extracts PDF page text through PDF.js and rejects empty extraction', async () => {
-    pdfjsMock.getDocument.mockReturnValue({
-      promise: Promise.resolve({
-        numPages: 1,
-        getPage: async () => ({
-          getTextContent: async () => ({ items: [{ str: 'Experienced engineer' }] }),
-        }),
-      }),
-      destroy: vi.fn(),
-    });
-
-    const pdf = new File(['pdf-data'], 'resume.pdf', { type: 'application/pdf' });
-    await expect(parseResumeFile(pdf)).resolves.toBe('Experienced engineer');
-    expect(pdfjsMock.getDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.any(Uint8Array) }),
-    );
-
-    pdfjsMock.getDocument.mockReturnValue({
-      promise: Promise.resolve({
-        numPages: 1,
-        getPage: async () => ({ getTextContent: async () => ({ items: [] }) }),
-      }),
-      destroy: vi.fn(),
-    });
-    await expect(parseResumeContent(pdf, pdf.name)).rejects.toThrow(
-      'No readable text was found. This file may be image-only or empty.',
     );
   });
 });

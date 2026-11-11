@@ -39,7 +39,7 @@ describe('resume library', () => {
     );
 
     expect(await screen.findByText('Your resume library is ready.')).toBeTruthy();
-    const resumeFile = new File(['resume bytes'], 'career.pdf', { type: 'application/pdf' });
+    const resumeFile = new File(['resume bytes'], 'career.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     fireEvent.change(screen.getByLabelText('Upload resume files'), {
       target: { files: [resumeFile] },
     });
@@ -88,7 +88,7 @@ describe('resume library', () => {
   it('surfaces unsupported files and parser failures without saving them', async () => {
     const serviceFactory = createServiceFactory();
     const parseFile = vi.fn(async () => {
-      throw new Error('The PDF is password-protected.');
+      throw new Error('The DOCX file is damaged.');
     });
     render(
       <ResumeLibrary
@@ -101,20 +101,44 @@ describe('resume library', () => {
     fireEvent.change(screen.getByLabelText('Upload resume files'), {
       target: {
         files: [
-          new File(['invalid'], 'wrong.pdf', { type: 'text/plain' }),
-          new File(['private'], 'locked.pdf', { type: 'application/pdf' }),
+          new File(['invalid'], 'wrong.docx', { type: 'text/plain' }),
+          new File(['private'], 'locked.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
         ],
       },
     });
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'wrong.pdf: The file type does not match the .pdf extension.',
+      'wrong.docx: The file type does not match the .docx extension.',
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      'locked.pdf: The PDF is password-protected.',
+      'locked.docx: The DOCX file is damaged.',
     );
     expect(parseFile).toHaveBeenCalledTimes(1);
-    expect(parseFile).toHaveBeenCalledWith(expect.objectContaining({ name: 'locked.pdf' }));
+    expect(parseFile).toHaveBeenCalledWith(expect.objectContaining({ name: 'locked.docx' }));
     expect(screen.getByText('Your resume library is ready.')).toBeTruthy();
+  });
+
+  it('rejects PDF and PPTX uploads without parsing them', async () => {
+    const serviceFactory = createServiceFactory();
+    const parseFile = vi.fn();
+    render(<ResumeLibrary parseFile={parseFile} serviceFactory={serviceFactory} />);
+    await screen.findByText('Your resume library is ready.');
+
+    expect(screen.getByLabelText('Upload resume files').getAttribute('accept')).not.toMatch(
+      /pdf|pptx|presentation/,
+    );
+    fireEvent.change(screen.getByLabelText('Upload resume files'), {
+      target: {
+        files: [
+          new File(['x'], 'cv.pdf', { type: 'application/pdf' }),
+          new File(['x'], 'deck.pptx'),
+        ],
+      },
+    });
+
+    const alert = (await screen.findByRole('alert')).textContent ?? '';
+    expect(alert).toContain('cv.pdf: Choose a DOCX resume file.');
+    expect(alert).toContain('deck.pptx: Choose a DOCX resume file.');
+    expect(parseFile).not.toHaveBeenCalled();
   });
 });

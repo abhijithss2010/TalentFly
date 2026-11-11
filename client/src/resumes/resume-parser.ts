@@ -1,33 +1,24 @@
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
 export const MAX_RESUME_FILE_SIZE = 15 * 1024 * 1024;
 export const MAX_ARCHIVE_EXPANDED_SIZE = 100 * 1024 * 1024;
 export const MAX_ARCHIVE_ENTRIES = 2_000;
-export const MAX_PDF_PAGES = 500;
 export const MAX_EXTRACTED_TEXT_LENGTH = 500_000;
 
-export type ResumeFileFormat = 'pdf' | 'docx' | 'pptx';
+export const SUPPORTED_RESUME_MESSAGE = 'Choose a DOCX resume file.';
 
-const formatByExtension: Record<string, ResumeFileFormat> = {
-  pdf: 'pdf',
-  docx: 'docx',
-  pptx: 'pptx',
-};
-
-const mimeTypes: Record<ResumeFileFormat, string> = {
-  pdf: 'application/pdf',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-};
+const DOCX_MIME_TYPE =
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 function extensionOf(fileName: string): string {
   return fileName.split('.').pop()?.toLowerCase() ?? '';
 }
 
-export function validateResumeFile(file: File): ResumeFileFormat {
-  const format = formatByExtension[extensionOf(file.name)];
-  if (!format) {
-    throw new Error('Choose a PDF, DOCX, or PPTX resume file.');
+function isDocx(fileName: string): boolean {
+  return extensionOf(fileName) === 'docx';
+}
+
+export function validateResumeFile(file: File): 'docx' {
+  if (!isDocx(file.name)) {
+    throw new Error(SUPPORTED_RESUME_MESSAGE);
   }
   if (file.size === 0) {
     throw new Error('The selected resume file is empty.');
@@ -37,14 +28,14 @@ export function validateResumeFile(file: File): ResumeFileFormat {
   }
   if (
     file.type &&
-    file.type !== mimeTypes[format] &&
+    file.type !== DOCX_MIME_TYPE &&
     file.type !== 'application/octet-stream' &&
-    !(format !== 'pdf' && file.type === 'application/zip')
+    file.type !== 'application/zip'
   ) {
-    throw new Error(`The file type does not match the .${format} extension.`);
+    throw new Error('The file type does not match the .docx extension.');
   }
 
-  return format;
+  return 'docx';
 }
 
 function getErrorMessage(error: unknown): string {
@@ -60,41 +51,6 @@ function ensureTextLimit(text: string): string {
     throw new Error('The extracted text is larger than the 500,000 character limit.');
   }
   return normalized;
-}
-
-async function parsePdf(file: Blob): Promise<string> {
-  const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-
-  const loadingTask = pdfjs.getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
-  });
-  try {
-    const document = await loadingTask.promise;
-    if (document.numPages > MAX_PDF_PAGES) {
-      throw new Error('PDF resumes must contain 500 pages or fewer.');
-    }
-
-    const pages: string[] = [];
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-      const page = await document.getPage(pageNumber);
-      const content = await page.getTextContent();
-      pages.push(
-        content.items
-          .filter((item) => 'str' in item)
-          .map((item) => ('str' in item ? item.str : ''))
-          .join(' '),
-      );
-    }
-    return ensureTextLimit(pages.join('\n'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('500 pages')) {
-      throw error;
-    }
-    throw new Error(`Could not read this PDF. It may be damaged or password-protected. ${getErrorMessage(error)}`);
-  } finally {
-    await loadingTask.destroy();
-  }
 }
 
 function nodeText(node: unknown): string {
@@ -155,7 +111,7 @@ function officeXmlText(xml: string, label: string): string {
   return xml;
 }
 
-async function readOfficeXml(file: Blob, format: 'docx' | 'pptx'): Promise<string> {
+async function readDocxXml(file: Blob): Promise<string> {
   const { unzipSync } = await import('fflate');
   const { XMLParser, XMLValidator } = await import('fast-xml-parser');
   let archiveEntries = 0;
@@ -165,21 +121,24 @@ async function readOfficeXml(file: Blob, format: 'docx' | 'pptx'): Promise<strin
       archiveEntries += 1;
       expandedSize += entry.originalSize;
       if (archiveEntries > MAX_ARCHIVE_ENTRIES) {
-        throw new Error('The Office document contains too many archive entries.');
+        throw new Error('The DOCX document contains too many archive entries.');
       }
       if (expandedSize > MAX_ARCHIVE_EXPANDED_SIZE) {
-        throw new Error('The Office document expands beyond the 100 MB safety limit.');
+        throw new Error('The DOCX document expands beyond the 100 MB safety limit.');
       }
-      return format === 'docx'
-        ? entry.name === 'word/document.xml'
-        : /^ppt\/slides\/slide\d+\.xml$/.test(entry.name);
+      return entry.name === 'word/document.xml';
     },
   });
-  const paths = Object.keys(archive);
-  if (paths.length === 0) {
-    throw new Error(`No readable ${format.toUpperCase()} content was found.`);
+  const xmlBytes = archive['word/document.xml'];
+  if (!xmlBytes) {
+    throw new Error('No readable DOCX content was found.');
   }
 
+  const xml = new TextDecoder().decode(xmlBytes);
+  officeXmlText(xml, 'DOCX');
+  if (XMLValidator.validate(xml) !== true) {
+    throw new Error('The DOCX document contains invalid XML.');
+  }
   const parser = new XMLParser({
     ignoreAttributes: true,
     preserveOrder: true,
@@ -187,37 +146,20 @@ async function readOfficeXml(file: Blob, format: 'docx' | 'pptx'): Promise<strin
     processEntities: true,
   });
   const paragraphs: string[] = [];
-
-  for (const path of paths.sort((left, right) => {
-    const leftNumber = Number(left.match(/slide(\d+)\.xml$/)?.[1] ?? 0);
-    const rightNumber = Number(right.match(/slide(\d+)\.xml$/)?.[1] ?? 0);
-    return leftNumber - rightNumber;
-  })) {
-    const xml = new TextDecoder().decode(archive[path]);
-    officeXmlText(xml, format.toUpperCase());
-    const validation = XMLValidator.validate(xml);
-    if (validation !== true) {
-      throw new Error(`The ${format.toUpperCase()} document contains invalid XML.`);
-    }
-    collectParagraphs(parser.parse(xml), paragraphs);
-  }
+  collectParagraphs(parser.parse(xml), paragraphs);
 
   return ensureTextLimit(paragraphs.join('\n'));
 }
 
 export async function parseResumeContent(file: Blob, fileName: string): Promise<string> {
-  const format = formatByExtension[extensionOf(fileName)];
-  if (!format) {
-    throw new Error('Choose a PDF, DOCX, or PPTX resume file.');
+  if (!isDocx(fileName)) {
+    throw new Error(SUPPORTED_RESUME_MESSAGE);
   }
   if (file.size > MAX_RESUME_FILE_SIZE) {
     throw new Error('Resume files must be 15 MB or smaller.');
   }
 
-  if (format === 'pdf') {
-    return parsePdf(file);
-  }
-  return readOfficeXml(file, format);
+  return readDocxXml(file);
 }
 
 interface WorkerResponse {

@@ -13,12 +13,11 @@ afterEach(async () => {
 });
 
 describe('HistoryPage', () => {
-  it('explains the empty state and shows that no provider requests were made', async () => {
+  it('explains the empty state', async () => {
     const { factory } = createTestDatabase();
     render(<HistoryPage serviceFactory={factory} />);
 
     expect(await screen.findByRole('heading', { name: 'No comparisons yet.' })).toBeTruthy();
-    expect(screen.getByText('No provider requests have been made yet.')).toBeTruthy();
   });
 
   it('lists saved runs newest first and links each to its run detail route', async () => {
@@ -54,24 +53,15 @@ describe('HistoryPage', () => {
     expect(within(waiting as HTMLElement).queryByText(/\/100/)).toBeNull();
   });
 
-  it('shows token totals per provider and a per-response list linked to its run', async () => {
+  it('no longer shows usage statistics; they live on the Usage page', async () => {
     const { factory } = createTestDatabase();
     const services = await factory();
     await seedRun(services);
-    const { run } = await seedRun(services);
 
     render(<HistoryPage serviceFactory={factory} />);
-
-    const totals = await screen.findByText(/2 responses/);
-    expect(totals.textContent).toContain('claude');
-    expect(totals.textContent).toContain('2,400 input');
-    expect(totals.textContent).toContain('600 output tokens');
-    expect(screen.getByText(/Costs are not calculated/)).toBeTruthy();
-    const table = screen.getByRole('table');
-    expect(within(table).getAllByRole('row')).toHaveLength(3);
-    expect(
-      within(table).getAllByRole('link').some((link) => link.getAttribute('href') === `#history/${run.id}`),
-    ).toBe(true);
+    await screen.findByText('Platform resume');
+    expect(screen.queryByText(/input tokens|Usage on this device|responses/i)).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('labels a run whose resume was deleted and still opens its saved report', async () => {

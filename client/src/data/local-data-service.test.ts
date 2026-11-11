@@ -24,10 +24,10 @@ function sampleResume(id = createRecordId('resume')): ResumeRecord {
   return {
     id,
     name: 'Software Engineer',
-    fileName: 'resume.pdf',
-    mimeType: 'application/pdf',
+    fileName: 'resume.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     fileSize: 6,
-    file: new Blob(['resume'], { type: 'application/pdf' }),
+    file: new Blob(['resume'], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
     extractedText: 'Experience with TypeScript.',
     createdAt: now,
     updatedAt: now,

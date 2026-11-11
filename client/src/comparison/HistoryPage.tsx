@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createLocalDataServices } from '../data/local-data-service';
-import type { ComparisonRunRecord, JobRecord, ResumeRecord, UsageRecord } from '../data/models';
+import type { ComparisonRunRecord, JobRecord, ResumeRecord } from '../data/models';
 import { useLocalServices } from '../data/use-local-services';
 import { parseRunResult } from './run-result';
 
@@ -8,18 +8,11 @@ interface HistoryData {
   runs: ComparisonRunRecord[];
   jobs: Map<string, JobRecord>;
   resumes: Map<string, ResumeRecord>;
-  usage: UsageRecord[];
 }
-
-const MAX_USAGE_ROWS = 50;
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
-
-function number(value: number | undefined): string {
-  return value === undefined ? '—' : value.toLocaleString();
 }
 
 export function HistoryPage({
@@ -38,15 +31,13 @@ export function HistoryPage({
       services.runs.getAll(),
       services.jobs.getAll(),
       services.resumes.getAll(),
-      services.usage.getAll(),
     ])
-      .then(([runs, jobs, resumes, usage]) => {
+      .then(([runs, jobs, resumes]) => {
         if (!active) return;
         setData({
           runs: runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
           jobs: new Map(jobs.map((job) => [job.id, job])),
           resumes: new Map(resumes.map((resume) => [resume.id, resume])),
-          usage: usage.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
         });
       })
       .catch((error: unknown) => {
@@ -63,15 +54,6 @@ export function HistoryPage({
   }
   if (!data) {
     return <p className="inbox-loading" role="status">Opening your comparison history…</p>;
-  }
-
-  const totals = new Map<string, { input: number; output: number; responses: number }>();
-  for (const record of data.usage) {
-    const current = totals.get(record.provider) ?? { input: 0, output: 0, responses: 0 };
-    current.input += record.inputTokens ?? 0;
-    current.output += record.outputTokens ?? 0;
-    current.responses += 1;
-    totals.set(record.provider, current);
   }
 
   return (
@@ -114,62 +96,6 @@ export function HistoryPage({
           </ul>
         </section>
       )}
-
-      <section className="usage-history" aria-label="Local usage history">
-        <h3>Usage on this device</h3>
-        <p className="muted-copy">
-          Token counts reported by the provider for your own API key. Costs are not calculated
-          because providers report tokens, not prices; check your provider account for billing.
-        </p>
-        {data.usage.length === 0 ? (
-          <p className="muted-copy">No provider requests have been made yet.</p>
-        ) : (
-          <>
-            <ul className="usage-totals">
-              {[...totals].map(([provider, total]) => (
-                <li key={provider}>
-                  <strong>{provider}</strong>: {total.responses.toLocaleString()} responses ·{' '}
-                  {total.input.toLocaleString()} input · {total.output.toLocaleString()} output tokens
-                </li>
-              ))}
-            </ul>
-            <table className="usage-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Provider</th>
-                  <th>Input tokens</th>
-                  <th>Output tokens</th>
-                  <th>Run</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.usage.slice(0, MAX_USAGE_ROWS).map((record) => (
-                  <tr key={record.id}>
-                    <td>{formatDate(record.createdAt)}</td>
-                    <td>{record.provider}</td>
-                    <td>{number(record.inputTokens)}</td>
-                    <td>{number(record.outputTokens)}</td>
-                    <td>
-                      {data.runs.some((run) => run.id === record.runId) ? (
-                        <a href={`#history/${record.runId}`}>Open</a>
-                      ) : (
-                        'Deleted'
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {data.usage.length > MAX_USAGE_ROWS && (
-              <p className="muted-copy">
-                Showing the latest {MAX_USAGE_ROWS} of {data.usage.length} responses. Totals above
-                include all of them.
-              </p>
-            )}
-          </>
-        )}
-      </section>
     </div>
   );
 }

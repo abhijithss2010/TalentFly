@@ -279,13 +279,13 @@ export function ResumeLibrary({
           <p className="eyebrow">YOUR LIBRARY</p>
           <h2 id="resume-library-heading">Keep your experience close.</h2>
           <p className="muted-copy">
-            Add PDF, DOCX, or PPTX files. Original files and extracted text stay in this browser.
+            Add DOCX files. Original files and extracted text stay in this browser.
           </p>
         </div>
         <label className={`button button-primary upload-button${busy ? ' button-disabled' : ''}`}>
           <input
             aria-label="Upload resume files"
-            accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="file-input"
             disabled={busy || loading}
             multiple
@@ -317,7 +317,7 @@ export function ResumeLibrary({
         <div className="resume-empty">
           <span className="resume-empty-icon" aria-hidden="true">R</span>
           <h3>Your resume library is ready.</h3>
-          <p>Choose a PDF, DOCX, or PPTX file to save it privately on this device.</p>
+          <p>Choose a DOCX file to save it privately on this device.</p>
           <p className="muted-copy">Scanned/image-only documents may not contain extractable text.</p>
         </div>
       ) : (

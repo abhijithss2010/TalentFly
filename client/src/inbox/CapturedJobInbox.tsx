@@ -11,9 +11,6 @@ import {
 } from '../data/local-data-service';
 import type { ComparisonRunRecord, JobRecord, ResumeRecord } from '../data/models';
 import { latestRunForUrl } from '../comparison/run-lookup';
-import { RunPanel } from '../comparison/RunPanel';
-import type { CredentialVault } from '../providers/credential-vault';
-import type { ProviderRegistry } from '../providers/provider-adapter';
 import { validateExtensionWindowMessage } from '../services/extension-protocol';
 import {
   ExtensionPortClient,
@@ -23,8 +20,6 @@ import {
 interface CapturedJobInboxProps {
   extensionId: string;
   serviceFactory?: typeof createLocalDataServices;
-  providerRegistry?: ProviderRegistry;
-  createVault?: (services: LocalDataServices) => CredentialVault;
 }
 
 interface PendingCapture {
@@ -73,8 +68,6 @@ function createJobRecord(messageId: string, job: CapturedJob): JobRecord {
 export function CapturedJobInbox({
   extensionId,
   serviceFactory = createLocalDataServices,
-  providerRegistry,
-  createVault,
 }: CapturedJobInboxProps) {
   const servicesRef = useRef<LocalDataServices | null>(null);
   const receivedMessageIds = useRef(new Set<string>());
@@ -83,23 +76,27 @@ export function CapturedJobInbox({
   );
   const [pendingCaptures, setPendingCaptures] = useState<PendingCapture[]>([]);
   const [jobs, setJobs] = useState<JobRecord[]>([]);
-  const [runs, setRuns] = useState<ComparisonRunRecord[]>([]);
   const [resumeSummaries, setResumeSummaries] = useState<Pick<ResumeRecord, 'id' | 'name'>[]>([]);
   const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const deepLinkedRunId = new URLSearchParams(window.location.search).get('runId');
-  const deepLinkedRun = runs.find((run) => run.id === deepLinkedRunId);
+  // Older extension links look like `?runId=<id>#inbox`; runs now live on the report page.
+  const legacyRunId = new URLSearchParams(window.location.search).get('runId');
+
+  useEffect(() => {
+    if (legacyRunId && /^[A-Za-z0-9_-]{1,128}$/.test(legacyRunId)) {
+      window.location.hash = `history/${legacyRunId}`;
+    }
+  }, [legacyRunId]);
 
   async function refresh(): Promise<void> {
     const services = servicesRef.current;
     if (!services) {
       return;
     }
-    const [storedJobs, storedRuns, resumes] = await Promise.all([
+    const [storedJobs, resumes] = await Promise.all([
       services.jobs.getAll(),
-      services.runs.getAll(),
       services.resumes.getAll(),
     ]);
     setJobs(
@@ -107,7 +104,6 @@ export function CapturedJobInbox({
         .filter((job) => job.captureMessageId)
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     );
-    setRuns(storedRuns.sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
     setResumeSummaries(resumes.map(({ id, name }) => ({ id, name })));
   }
 
@@ -453,8 +449,8 @@ export function CapturedJobInbox({
         jobId: job.id,
         resumeIds: selectedResumeIds,
       });
-      await refresh();
-      setNotice(`Comparison run ${run.id} was created with status "${run.status}".`);
+      // Runs are reviewed, sent and read on the report page, not here.
+      window.location.hash = `history/${run.id}`;
     } catch (runError) {
       setError(messageFrom(runError));
     }
@@ -479,7 +475,7 @@ export function CapturedJobInbox({
       {error && <p className="inbox-feedback inbox-feedback-error" role="alert">{error}</p>}
       {notice && <p className="inbox-feedback inbox-feedback-success" role="status">{notice}</p>}
       {loading ? (
-        <p className="inbox-loading" role="status">Opening local jobs and comparison history…</p>
+        <p className="inbox-loading" role="status">Opening your saved jobs…</p>
       ) : (
         <>
           {pendingCaptures.length > 0 && (
@@ -560,47 +556,6 @@ export function CapturedJobInbox({
                   </details>
                 </article>
               ))
-            )}
-          </section>
-
-          <section className="inbox-runs" aria-label="Comparison runs">
-            <h3>Comparison runs</h3>
-            {deepLinkedRun && (
-              <article className="inbox-run-detail" aria-label="Opened comparison run">
-                <p className="eyebrow">OPENED RUN</p>
-                <h4>{jobs.find((job) => job.id === deepLinkedRun.jobId)?.title ?? 'Saved job'}</h4>
-                <p>
-                  Run {deepLinkedRun.id} is saved with status <strong>{deepLinkedRun.status}</strong>.{' '}
-                  <a href={`#history/${deepLinkedRun.id}`}>Open the full report →</a>
-                </p>
-              </article>
-            )}
-            {runs.length === 0 ? (
-              <p className="muted-copy">No comparison runs have been created.</p>
-            ) : (
-              <ul>
-                {runs.map((run) => (
-                  <li
-                    className={run.id === deepLinkedRunId ? 'inbox-run-selected' : undefined}
-                    data-run-id={run.id}
-                    key={run.id}
-                  >
-                    <span>{jobs.find((job) => job.id === run.jobId)?.title ?? 'Saved job'}</span>
-                    <span className={`run-status run-status-${run.status}`}>{run.status}</span>
-                    {run.error && <span role="alert">{run.error}</span>}
-                    {servicesRef.current && (
-                      <RunPanel
-                        services={servicesRef.current}
-                        run={run}
-                        job={jobs.find((job) => job.id === run.jobId)}
-                        registry={providerRegistry}
-                        createVault={createVault}
-                        onChanged={() => void refresh()}
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
             )}
           </section>
         </>

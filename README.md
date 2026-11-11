@@ -73,13 +73,12 @@ store them as carefully as the original documents. These services establish the 
 layer, and the Resume library screen uses it to upload, rename, choose a default, inspect/edit
 extracted text, and delete resumes.
 
-PDF, DOCX, and PPTX files are parsed in the browser; PDF.js runs in a Web Worker, and the
-Office ZIP/XML parsers use Web Workers to keep the interface responsive. Uploads are limited
-to 15 MB, 500 PDF pages, 2,000 archive entries, 100 MB expanded Office content, and 500,000
-extracted characters. Image-only/scanned resumes that have no embedded text show a parse
-message; OCR is not included. Parsing requires no API or network request. The parser
-dependencies are PDF.js (Apache-2.0), fflate (MIT), and fast-xml-parser (MIT). Their worker
-assets are included in the offline app cache.
+Only DOCX resumes are supported; PDF and PPTX files are rejected. DOCX files are parsed in the
+browser by Web Workers (fflate and fast-xml-parser, both MIT) so the interface stays responsive.
+Uploads are limited to 15 MB, 2,000 archive entries, 100 MB expanded content, and 500,000
+extracted characters. Text in images, text boxes and charts is not extracted, and a DOCX with
+no readable text shows a parse message; OCR is not included. Parsing requires no API or network
+request. Resumes saved before this change from PDF or PPTX keep their extracted text.
 
 IndexedDB is scoped to the current browser profile and device. Local browser storage is not a
 substitute for a backup.

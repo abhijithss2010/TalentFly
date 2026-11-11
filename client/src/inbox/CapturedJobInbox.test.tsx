@@ -159,8 +159,8 @@ describe('captured job inbox', () => {
     await services.resumes.save({
       id: createRecordId('resume'),
       name: 'Engineer',
-      fileName: 'engineer.pdf',
-      mimeType: 'application/pdf',
+      fileName: 'engineer.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       fileSize: 1,
       file: new Blob(['x']),
       extractedText: 'Experience',
@@ -174,7 +174,7 @@ describe('captured job inbox', () => {
       type: 'RESUMES',
       payload: { resumes: [{ id: expect.any(String), name: 'Engineer' }] },
     });
-    expect(JSON.stringify(replies[0])).not.toContain('engineer.pdf');
+    expect(JSON.stringify(replies[0])).not.toContain('engineer.docx');
     sourceFrame.remove();
   });
 
@@ -195,8 +195,8 @@ describe('captured job inbox', () => {
     const resume = {
       id: createRecordId('resume'),
       name: 'Resume',
-      fileName: 'resume.pdf',
-      mimeType: 'application/pdf',
+      fileName: 'resume.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       fileSize: 1,
       file: new Blob(['x']),
       extractedText: 'Experience',
@@ -213,9 +213,12 @@ describe('captured job inbox', () => {
     sendFromExtension(source, start);
     sendFromExtension(source, start);
 
-    await screen.findByText('received', { selector: '.run-status' });
-    expect(await screen.findByRole('button', { name: 'Review and send for comparison' })).toBeTruthy();
+    await screen.findByText('Reference');
     expect(await services.runs.getAll()).toHaveLength(1);
+    // Runs are not shown here; they are reviewed and sent from the Comparisons page.
+    expect(screen.queryByRole('heading', { name: 'Comparison runs' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review and send for comparison' })).toBeNull();
+    expect(document.querySelector('.run-status')).toBeNull();
     const savedJobs = (await services.jobs.getAll()).filter(
       (saved) => saved.captureMessageId === 'start-message-1',
     );
@@ -308,8 +311,8 @@ describe('captured job inbox', () => {
     await services.resumes.save({
       id: resumeId,
       name: 'Platform resume',
-      fileName: 'platform.pdf',
-      mimeType: 'application/pdf',
+      fileName: 'platform.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       fileSize: 1,
       file: new Blob(['x']),
       extractedText: 'Platform experience',
@@ -412,8 +415,8 @@ describe('captured job inbox', () => {
     await services.resumes.save({
       id: resumeId,
       name: 'Resume',
-      fileName: 'r.pdf',
-      mimeType: 'application/pdf',
+      fileName: 'r.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       fileSize: 1,
       file: new Blob(['x']),
       extractedText: 'Experience',
@@ -467,5 +470,18 @@ describe('captured job inbox', () => {
     await waitFor(() => expect(port.posted).toHaveLength(6));
     expect(port.posted[4]).toMatchObject({ type: 'ERROR', messageId: 'get-3', payload: { code: 'NOT_FOUND' } });
     expect(port.posted[5]).toMatchObject({ type: 'ERROR', messageId: 'latest-2', payload: { code: 'NOT_FOUND' } });
+  });
+
+  it('shows only saved jobs and sends legacy run links to the report page', async () => {
+    window.history.replaceState(null, '', '/?runId=run_legacy-1#inbox');
+    const serviceFactory = createServiceFactory();
+    render(<CapturedJobInbox extensionId={extensionId} serviceFactory={serviceFactory} />);
+    await screen.findByText('No captured jobs have been confirmed yet.');
+
+    expect(screen.getByRole('heading', { name: 'Saved jobs' })).toBeTruthy();
+    expect(screen.queryByText('Comparison runs')).toBeNull();
+    expect(screen.queryByText('No comparison runs have been created.')).toBeNull();
+    expect(window.location.hash).toBe('#history/run_legacy-1');
+    window.history.replaceState(null, '', '/');
   });
 });

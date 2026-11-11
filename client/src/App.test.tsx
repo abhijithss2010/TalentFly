@@ -84,4 +84,14 @@ describe('hash routes', () => {
     expect(await screen.findByRole('heading', { name: 'Data controls' })).toBeTruthy();
     window.history.replaceState(null, '', '#');
   });
+
+  it('opens the Usage page from the nav and parses its route', async () => {
+    expect(parseRoute('#usage')).toEqual({ page: 'usage' });
+    window.history.replaceState(null, '', '#');
+    render(<App />);
+    fireEvent.click(screen.getByRole('link', { name: 'Usage' }));
+    expect(screen.getByRole('heading', { name: 'Usage', level: 1 })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'No usage yet.' })).toBeTruthy();
+    window.history.replaceState(null, '', '#');
+  });
 });

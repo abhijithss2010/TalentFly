@@ -2,18 +2,20 @@ import { useEffect, useState } from 'react';
 import { DiagnosticsPage } from './DiagnosticsPage';
 import { HistoryPage } from './comparison/HistoryPage';
 import { RunDetailPage } from './comparison/RunDetailPage';
+import { UsagePage } from './comparison/UsagePage';
 import { CapturedJobInbox } from './inbox/CapturedJobInbox';
 import { ProviderSettings } from './providers/ProviderSettings';
 import { ResumeLibrary } from './resumes/ResumeLibrary';
 import { DATA_DELETED_EVENT, DataControls } from './settings/DataControls';
 
-type PageId = 'dashboard' | 'resumes' | 'inbox' | 'history' | 'settings' | 'diagnostics';
+type PageId = 'dashboard' | 'resumes' | 'inbox' | 'history' | 'usage' | 'settings' | 'diagnostics';
 
 const navigation: { id: PageId; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Overview', icon: 'O' },
   { id: 'resumes', label: 'Resume library', icon: 'R' },
   { id: 'inbox', label: 'Captured jobs', icon: 'J' },
   { id: 'history', label: 'Comparisons', icon: 'C' },
+  { id: 'usage', label: 'Usage', icon: 'U' },
   { id: 'settings', label: 'Settings', icon: 'S' },
   { id: 'diagnostics', label: 'About & diagnostics', icon: 'D' },
 ];
@@ -23,6 +25,7 @@ const pageTitles: Record<PageId, string> = {
   resumes: 'Resume library',
   inbox: 'Captured jobs',
   history: 'Comparisons',
+  usage: 'Usage',
   settings: 'Settings',
   diagnostics: 'About & diagnostics',
 };
@@ -314,6 +317,7 @@ export function App() {
             ) : (
               <HistoryPage />
             ))}
+          {page === 'usage' && <UsagePage />}
           {page === 'settings' && (
             <>
               <ProviderSettings key={settingsKey} />
