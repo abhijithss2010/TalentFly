@@ -106,3 +106,9 @@ Production actions are manual and do not run for pull requests:
 
 Restrict both environments to the `main` branch and require approval before use. CI jobs
 have read-only repository permissions and do not receive production credentials.
+
+See [Firebase and release setup](./docs/FIREBASE_AND_RELEASES.md) for Firebase project
+preparation, protected environment variables/secrets, Chrome Web Store publisher setup,
+build diagnostics, and the first-release checklist. Firebase Auth, Firestore, and server
+deployment are documented as later setup: they are not yet configured or deployed by this
+repository.
