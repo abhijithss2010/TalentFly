@@ -154,6 +154,16 @@ describe('local data services', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
+    await services.credentials.save({
+      id: 'claude',
+      format: 'talentfly-credential-v1',
+      salt: 'c2FsdA==',
+      iv: 'aXY=',
+      ciphertext: 'c2VjcmV0',
+      iterations: 310_000,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
 
     await services.deleteAll();
     const exported = await services.exportData();
@@ -165,5 +175,27 @@ describe('local data services', () => {
       usage: [],
       settings: [],
     });
+    expect(await services.credentials.get('claude')).toBeUndefined();
+  });
+
+  it('keeps encrypted provider credentials out of exports and user-data imports', async () => {
+    const services = await openServices();
+    const credential = {
+      id: 'claude' as const,
+      format: 'talentfly-credential-v1' as const,
+      salt: 'c2FsdA==',
+      iv: 'aXY=',
+      ciphertext: 'ZW5jcnlwdGVkLW9ubHk=',
+      iterations: 310_000,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    await services.credentials.save(credential);
+    const exported = await services.exportData();
+
+    expect(JSON.stringify(exported)).not.toContain('credentials');
+    expect(JSON.stringify(exported)).not.toContain(credential.ciphertext);
+    await services.importData(exported);
+    expect(await services.credentials.get('claude')).toEqual(credential);
   });
 });

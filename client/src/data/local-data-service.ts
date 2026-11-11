@@ -1,12 +1,14 @@
 import {
   LOCAL_DATABASE_NAME,
   LOCAL_STORE_NAMES,
+  USER_DATA_STORE_NAMES,
   openLocalDatabase,
   type LocalStoreName,
 } from './database';
 import type {
   AppSettingsRecord,
   ComparisonRunRecord,
+  EncryptedCredentialRecord,
   ExportedResumeRecord,
   JobRecord,
   LocalDataExport,
@@ -28,6 +30,7 @@ export interface LocalDataServices {
   runs: EntityRepository<ComparisonRunRecord>;
   usage: EntityRepository<UsageRecord>;
   settings: EntityRepository<AppSettingsRecord>;
+  credentials: EntityRepository<EncryptedCredentialRecord>;
   exportData(): Promise<LocalDataExport>;
   importData(data: unknown): Promise<void>;
   deleteAll(): Promise<void>;
@@ -142,6 +145,10 @@ function isText(value: unknown): value is string {
   return typeof value === 'string';
 }
 
+function isProviderId(value: unknown): value is NonNullable<AppSettingsRecord['preferredProvider']> {
+  return isText(value) && value.length > 0;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunkSize = 0x8000;
@@ -217,9 +224,7 @@ function validateExport(value: unknown): ValidatedLocalData {
       Array.isArray(record.resumeIds) &&
       record.resumeIds.every(isText) &&
       ['received', 'analysing', 'done', 'failed'].includes(String(record.status)) &&
-      (record.provider === undefined ||
-        record.provider === 'claude' ||
-        record.provider === 'copilot') &&
+      (record.provider === undefined || isProviderId(record.provider)) &&
       (record.result === undefined || isObject(record.result)) &&
       (record.error === undefined || isText(record.error)),
     'run',
@@ -228,7 +233,7 @@ function validateExport(value: unknown): ValidatedLocalData {
     data.usage,
     (record) =>
       isText(record.runId) &&
-      (record.provider === 'claude' || record.provider === 'copilot') &&
+      isProviderId(record.provider) &&
       ['inputTokens', 'outputTokens', 'estimatedCostUsd'].every(
         (key) => record[key] === undefined ||
           (typeof record[key] === 'number' && Number.isFinite(record[key])),
@@ -240,9 +245,10 @@ function validateExport(value: unknown): ValidatedLocalData {
     (record) =>
       record.id === 'app' &&
       (record.defaultResumeId === null || isText(record.defaultResumeId)) &&
-      (record.preferredProvider === null ||
-        record.preferredProvider === 'claude' ||
-        record.preferredProvider === 'copilot'),
+      (record.preferredProvider === null || isProviderId(record.preferredProvider)) &&
+      (record.providerModels === undefined ||
+        (isObject(record.providerModels) &&
+          Object.values(record.providerModels).every(isText))),
     'settings',
   );
 
@@ -291,8 +297,9 @@ export async function createLocalDataServices(options?: {
     runs: createRepository(database, 'runs'),
     usage: createRepository(database, 'usage'),
     settings: createRepository(database, 'settings'),
+    credentials: createRepository(database, 'credentials'),
     async exportData() {
-      const transaction = database.transaction(LOCAL_STORE_NAMES, 'readonly');
+      const transaction = database.transaction(USER_DATA_STORE_NAMES, 'readonly');
       const completed = transactionComplete(transaction);
       const resumes = requestResult<ResumeRecord[]>(readAll(transaction.objectStore('resumes')));
       const jobs = requestResult<JobRecord[]>(readAll(transaction.objectStore('jobs')));
@@ -329,11 +336,11 @@ export async function createLocalDataServices(options?: {
     },
     async importData(untrustedData: unknown) {
       const data = validateExport(untrustedData);
-      const transaction = database.transaction(LOCAL_STORE_NAMES, 'readwrite');
+      const transaction = database.transaction(USER_DATA_STORE_NAMES, 'readwrite');
       const completed = transactionComplete(transaction);
 
       try {
-        for (const name of LOCAL_STORE_NAMES) {
+        for (const name of USER_DATA_STORE_NAMES) {
           transaction.objectStore(name).clear();
         }
         addAll(transaction.objectStore('resumes'), data.data.resumes);

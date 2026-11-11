@@ -940,6 +940,184 @@ h1 {
   outline-offset: 2px;
 }
 
+.provider-settings {
+  display: grid;
+  gap: 16px;
+}
+
+.provider-settings-header {
+  padding: 21px 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.provider-settings-header .eyebrow {
+  margin-bottom: 8px;
+}
+
+.provider-settings-header h2 {
+  margin: 0 0 7px;
+  font-size: 19px;
+}
+
+.provider-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.72fr) minmax(0, 1.6fr);
+  align-items: start;
+  gap: 13px;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 12px;
+  padding: 21px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.settings-panel > label,
+.provider-form label,
+.provider-change-passphrase label {
+  color: #59647e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.settings-panel select,
+.provider-form input,
+.provider-change-passphrase input {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid #dfe1ea;
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.settings-panel select:focus-visible,
+.provider-form input:focus-visible,
+.provider-change-passphrase input:focus-visible {
+  outline: 3px solid #9a8bea;
+  outline-offset: 2px;
+}
+
+.provider-security-note,
+.provider-choice-panel > p,
+.provider-unavailable > p {
+  margin: 0;
+  color: #81899c;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.provider-detail-panel {
+  gap: 12px;
+}
+
+.provider-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.provider-panel-heading .eyebrow {
+  margin: 0 0 5px;
+}
+
+.provider-panel-heading h3,
+.provider-unavailable h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.provider-key-status {
+  padding: 6px 9px;
+  border-radius: 20px;
+  background: #f3f4f8;
+  color: #777f91;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.provider-key-unlocked {
+  background: #e9f7f1;
+  color: #4c856e;
+}
+
+.provider-form,
+.provider-change-passphrase {
+  display: grid;
+  gap: 9px;
+  padding-top: 5px;
+}
+
+.provider-form .button {
+  width: fit-content;
+  margin-top: 3px;
+}
+
+.provider-security-note {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 17px;
+  padding-top: 3px;
+}
+
+.provider-actions .button {
+  min-height: 37px;
+}
+
+.provider-change-passphrase {
+  flex: 1 1 100%;
+  max-width: 410px;
+  margin-top: 7px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfbfd;
+}
+
+.provider-unavailable {
+  min-height: 200px;
+  align-content: center;
+  justify-items: start;
+}
+
+.provider-message {
+  padding: 12px 14px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.provider-message-error {
+  border: 1px solid #f1d8d8;
+  background: #fff8f8;
+  color: #9c4545;
+}
+
+.provider-message-success {
+  border: 1px solid #d6ece4;
+  background: #f5fbf8;
+  color: #4b816f;
+}
+
 .muted-copy {
   max-width: 430px;
   margin-bottom: 0;
@@ -1309,6 +1487,14 @@ h1 {
 
   .resume-card {
     padding: 15px;
+  }
+
+  .provider-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-panel-heading {
+    flex-wrap: wrap;
   }
 
   .resume-actions,

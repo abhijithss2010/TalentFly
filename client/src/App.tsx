@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DiagnosticsPage } from './DiagnosticsPage';
+import { ProviderSettings } from './providers/ProviderSettings';
 import { ResumeLibrary } from './resumes/ResumeLibrary';
 
 type PageId = 'dashboard' | 'resumes' | 'history' | 'settings' | 'diagnostics';
@@ -307,14 +308,7 @@ export function App() {
               icon="C"
             />
           )}
-          {page === 'settings' && (
-            <EmptyState
-              eyebrow="YOUR PREFERENCES"
-              title="Your workspace, your choices."
-              description="Provider selection, encrypted API key storage, and data controls will be configured here."
-              icon="S"
-            />
-          )}
+          {page === 'settings' && <ProviderSettings />}
           {page === 'diagnostics' && <DiagnosticsPage />}
         </main>
       </div>

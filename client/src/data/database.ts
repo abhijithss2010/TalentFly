@@ -1,13 +1,15 @@
 export const LOCAL_DATABASE_NAME = 'talentfly-local';
-export const LOCAL_DATABASE_VERSION = 2;
+export const LOCAL_DATABASE_VERSION = 3;
 
-export const LOCAL_STORE_NAMES = [
+export const USER_DATA_STORE_NAMES = [
   'resumes',
   'jobs',
   'runs',
   'usage',
   'settings',
 ] as const;
+
+export const LOCAL_STORE_NAMES = [...USER_DATA_STORE_NAMES, 'credentials'] as const;
 
 export type LocalStoreName = (typeof LOCAL_STORE_NAMES)[number];
 
@@ -59,6 +61,9 @@ const migrations: Record<number, Migration> = {
     const usage = transaction.objectStore('usage');
     ensureIndex(usage, 'byRunId', 'runId');
     ensureIndex(usage, 'byCreatedAt', 'createdAt');
+  },
+  3(database, transaction) {
+    ensureStore(database, transaction, 'credentials');
   },
 };
 

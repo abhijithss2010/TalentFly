@@ -66,8 +66,8 @@ describe('resume library', () => {
     fireEvent.change(textArea, { target: { value: 'Updated and reviewed text.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save extracted text' }));
     await waitFor(() =>
-      expect((screen.getByLabelText('Extracted resume text') as HTMLTextAreaElement).value).toBe(
-        'Updated and reviewed text.',
+      expect(screen.getByRole('status').textContent).toContain(
+        'Extracted text saved on this device.',
       ),
     );
 

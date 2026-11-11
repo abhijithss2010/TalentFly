@@ -35,6 +35,7 @@ function updatedSettings(
     id: 'app',
     defaultResumeId: changes.defaultResumeId,
     preferredProvider: existing?.preferredProvider ?? null,
+    providerModels: existing?.providerModels,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };

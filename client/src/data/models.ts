@@ -1,4 +1,4 @@
-export type ProviderId = 'claude' | 'copilot';
+export type ProviderId = 'claude' | 'copilot' | (string & {});
 
 export type RunStatus = 'received' | 'analysing' | 'done' | 'failed';
 
@@ -46,6 +46,16 @@ export interface AppSettingsRecord extends StoredRecord {
   id: 'app';
   defaultResumeId: string | null;
   preferredProvider: ProviderId | null;
+  providerModels?: Record<string, string>;
+}
+
+export interface EncryptedCredentialRecord extends StoredRecord {
+  id: ProviderId;
+  format: 'talentfly-credential-v1';
+  salt: string;
+  iv: string;
+  ciphertext: string;
+  iterations: number;
 }
 
 export type ExportedResumeRecord = Omit<ResumeRecord, 'file'> & {

@@ -83,6 +83,28 @@ assets are included in the offline app cache.
 IndexedDB is scoped to the current browser profile and device. Local browser storage is not a
 substitute for a backup.
 
+## Provider settings and API-key security
+
+The client uses a provider-neutral `ProviderAdapter` contract and registry. The Claude adapter
+uses Anthropic's official TypeScript SDK; additional providers can be added by implementing the
+adapter and registering it, without changing the encrypted credential format or settings UI.
+GitHub Copilot is intentionally shown as unavailable: no Copilot SDK or credential flow is
+included in this release.
+
+API keys are encrypted with AES-256-GCM using a random 96-bit IV and a PBKDF2-SHA-256 key
+derived from the user's passphrase with a random 128-bit salt and 310,000 iterations. The
+credential store is separate from application data and excluded from import/export. Keys can be
+locked, removed, replaced, and re-encrypted with a new passphrase. The derived key is held only
+in memory while unlocked, and is cleared when leaving Settings or when the page is hidden.
+There is no passphrase recovery; forgetting it requires removing and re-entering the provider
+key. Keep a separate secure copy of the original key.
+
+Claude requests go directly from the browser to Anthropic using the official SDK's explicit
+browser-access opt-in. The Settings connection check only retrieves model metadata and sends no
+message. Browser encryption protects stored keys at rest, not an unlocked session, a compromised
+device, or malicious same-origin code. The provider receives only request content sent by the
+user; resume text must not be sent until the user explicitly starts a comparison.
+
 ## Chrome extension
 
 The extension popup and icons can be built for local development with:
