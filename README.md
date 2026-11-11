@@ -62,6 +62,16 @@ The browser generates its launch splash screen from the PWA manifest's app name,
 background color. The UI uses system fonts so the app does not fetch fonts from a third
 party.
 
+## Local data foundation
+
+Client data is modeled in `client/src/data/` and stored only in IndexedDB. The versioned
+database has typed repositories for resumes, jobs, comparison runs, usage, and app settings.
+Its data service includes JSON-compatible import/export (resume file bytes are base64 encoded)
+and an atomic delete-all operation. Exports contain sensitive resume files and report data;
+store them as carefully as the original documents. These services establish the persistence
+layer; the PWA screens are not connected to them yet. Local browser storage is not a substitute
+for a backup.
+
 ## Chrome extension
 
 The extension popup and icons can be built for local development with:
