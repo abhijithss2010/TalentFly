@@ -1,0 +1,6 @@
+{
+  "manifest_version": 3,
+  "name": "TalentFly",
+  "version": "0.1.0",
+  "description": "Capture a job description and compare it with a resume in TalentFly."
+}

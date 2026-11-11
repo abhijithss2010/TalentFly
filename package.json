@@ -1,0 +1,41 @@
+{
+  "name": "talentfly-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "workspaces": [
+    "client",
+    "extension",
+    "server"
+  ],
+  "scripts": {
+    "dev:client": "npm run dev --workspace @talentfly/client",
+    "build:client": "npm run build --workspace @talentfly/client",
+    "typecheck:client": "npm run typecheck --workspace @talentfly/client",
+    "lint:client": "npm run lint --workspace @talentfly/client",
+    "test:client": "npm run test --workspace @talentfly/client",
+    "build:extension": "npm run build --workspace @talentfly/extension",
+    "typecheck:extension": "npm run typecheck --workspace @talentfly/extension",
+    "lint:extension": "npm run lint --workspace @talentfly/extension",
+    "test:extension": "npm run test --workspace @talentfly/extension",
+    "dev:server": "npm run dev --workspace @talentfly/server",
+    "build:server": "npm run build --workspace @talentfly/server",
+    "typecheck:server": "npm run typecheck --workspace @talentfly/server",
+    "lint:server": "npm run lint --workspace @talentfly/server",
+    "test:server": "npm run test --workspace @talentfly/server",
+    "build": "npm run build:client && npm run build:extension && npm run build:server",
+    "typecheck": "npm run typecheck:client && npm run typecheck:extension && npm run typecheck:server",
+    "lint": "npm run lint:client && npm run lint:extension && npm run lint:server",
+    "test": "npm run test:client && npm run test:extension && npm run test:server"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "oxlint": "^1.93.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
