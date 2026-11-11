@@ -1,0 +1,21 @@
+{
+  "name": "@talentfly/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "npm run typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "oxlint src test",
+    "test": "vitest run"
+  }
+}

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "@talentfly/shared": "^0.1.0",
     "fast-xml-parser": "^5.12.0",
     "fflate": "^0.8.3",
     "pdfjs-dist": "^6.5.438",

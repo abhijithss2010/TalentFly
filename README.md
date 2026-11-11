@@ -5,6 +5,7 @@ comparison app.
 
 ## Workspaces
 
+- `shared/` — versioned runtime-validated extension message contract
 - `client/` — React, TypeScript, and Vite PWA
 - `extension/` — TypeScript Chrome extension
 - `server/` — NestJS API for explicitly scoped account/admin services
@@ -104,6 +105,21 @@ browser-access opt-in. The Settings connection check only retrieves model metada
 message. Browser encryption protects stored keys at rest, not an unlocked session, a compromised
 device, or malicious same-origin code. The provider receives only request content sent by the
 user; resume text must not be sent until the user explicitly starts a comparison.
+
+## Extension message protocol
+
+The `@talentfly/shared` workspace defines protocol version 1 for `PING`/`PONG`,
+`JOB_CAPTURED`, `LIST_RESUMES`/`RESUMES`, `START_COMPARISON`, and `STATUS_UPDATE`. It validates
+exact message shapes, run statuses, IDs, job URLs, duplicate resume selections, a maximum of
+five selected resumes, ID/name-only resume summaries, and a 256 KiB serialized-message
+ceiling. PWA origins must be explicit HTTPS origins; only localhost is accepted over HTTP
+during development. The client validator also checks the exact `chrome-extension://<id>`
+sender origin and configured extension ID. The extension validator checks that a message came
+from an allow-listed PWA origin.
+
+The current capture preview remains local to the popup. This protocol establishes the shared
+contract and validation boundaries; extension-to-PWA transport, message handoff, and run creation
+are separate follow-up steps and are not enabled yet.
 
 ## Chrome extension
 

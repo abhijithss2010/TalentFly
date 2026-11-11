@@ -22,6 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         workspace:
+          - name: Shared protocol
+            package: '@talentfly/shared'
           - name: Client
             package: '@talentfly/client'
           - name: Extension

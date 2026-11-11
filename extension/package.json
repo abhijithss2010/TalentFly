@@ -13,6 +13,9 @@
     "lint": "oxlint src test vite.config.ts",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@talentfly/shared": "^0.1.0"
+  },
   "devDependencies": {
     "@types/chrome": "^0.3.7",
     "fflate": "^0.8.3",
