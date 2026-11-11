@@ -51,7 +51,8 @@ export class ExtensionPortClient {
     let message: ProtocolMessage;
     try {
       message = validateProtocolMessage(rawMessage);
-    } catch {
+    } catch (error) {
+      this.onInvalidMessage(rawMessage, error instanceof Error ? error : new Error(String(error)));
       return;
     }
     const pending = this.pending.get(message.messageId);
@@ -77,6 +78,7 @@ export class ExtensionPortClient {
     extensionId: string,
     private readonly onUnsolicitedMessage: (message: ProtocolMessage) => void = () => undefined,
     private readonly timeoutMs = 15_000,
+    private readonly onInvalidMessage: (rawMessage: unknown, error: Error) => void = () => undefined,
   ) {
     if (!/^[a-p]{32}$/.test(extensionId)) {
       throw new Error('Configure a valid VITE_TALENTFLY_EXTENSION_ID to connect the extension.');

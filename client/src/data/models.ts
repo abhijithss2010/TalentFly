@@ -24,6 +24,7 @@ export interface JobRecord extends StoredRecord {
   location?: string;
   sourceUrl?: string;
   description: string;
+  otherFields?: Record<string, string>;
 }
 
 export interface ComparisonRunRecord extends StoredRecord {

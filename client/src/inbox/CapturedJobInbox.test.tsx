@@ -83,6 +83,15 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+const capturedJob = {
+  title: 'Platform Engineer',
+  company: 'Example',
+  location: 'Remote',
+  sourceUrl: 'https://whoz.com/jobs/1',
+  description: 'Build and operate the platform.',
+  otherFields: { Reference: 'REF-1' },
+};
+
 describe('captured job inbox', () => {
   it('previews extension captures and only persists after explicit confirmation', async () => {
     const serviceFactory = createServiceFactory();
@@ -183,15 +192,6 @@ describe('captured job inbox', () => {
     );
     await screen.findByText('No captured jobs have been confirmed yet.');
     const services = openedServices[0];
-    const job = await services.saveCapturedJob({
-      id: createRecordId('job'),
-      captureMessageId: 'approved-capture',
-      title: 'Backend Engineer',
-      sourceUrl: 'https://jobs.example/backend',
-      description: 'Build reliable backend services.',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
     const resume = {
       id: createRecordId('resume'),
       name: 'Resume',
@@ -206,7 +206,7 @@ describe('captured job inbox', () => {
     await services.resumes.save(resume);
     const start = createProtocolMessage(
       'START_COMPARISON',
-      { jobId: job.id, resumeIds: [resume.id] },
+      { job: capturedJob, resumeIds: [resume.id] },
       'start-message-1',
     );
 
@@ -215,6 +215,16 @@ describe('captured job inbox', () => {
 
     await screen.findByText('received', { selector: '.run-status' });
     expect(await services.runs.getAll()).toHaveLength(1);
+    const savedJobs = (await services.jobs.getAll()).filter(
+      (saved) => saved.captureMessageId === 'start-message-1',
+    );
+    expect(savedJobs).toHaveLength(1);
+    expect(savedJobs[0]).toMatchObject({
+      sourceUrl: 'https://whoz.com/jobs/1',
+      otherFields: { Reference: 'REF-1' },
+    });
+    await screen.findByText('Reference');
+    await screen.findByText('REF-1');
     sourceFrame.remove();
   });
 
@@ -328,7 +338,7 @@ describe('captured job inbox', () => {
 
     const start = createProtocolMessage(
       'START_COMPARISON',
-      { jobId: job.id, resumeIds: [resumeId] },
+      { job: capturedJob, resumeIds: [resumeId] },
       'request-start',
     );
     port.receive(start);
@@ -339,5 +349,53 @@ describe('captured job inbox', () => {
       payload: { status: 'received' },
     });
     expect(await services.runs.getAll()).toHaveLength(1);
+  });
+
+  it('answers a run that cannot be created with an ERROR reply instead of staying silent', async () => {
+    const port = new MockExtensionPort();
+    vi.stubGlobal('chrome', { runtime: { connect: vi.fn(() => port) } satisfies ExtensionRuntimeClient });
+    render(
+      <CapturedJobInbox extensionId={extensionId} serviceFactory={createServiceFactory()} />,
+    );
+    await screen.findByText('No captured jobs have been confirmed yet.');
+
+    const start = createProtocolMessage(
+      'START_COMPARISON',
+      { job: capturedJob, resumeIds: ['resume_that_was_deleted'] },
+      'start-missing-resume',
+    );
+    port.receive(start);
+
+    await waitFor(() => expect(port.posted).toHaveLength(1));
+    expect(port.posted[0]).toMatchObject({
+      type: 'ERROR',
+      messageId: 'start-missing-resume',
+      payload: { code: 'NOT_FOUND', message: expect.stringContaining('no longer available') },
+    });
+  });
+
+  it('reports an incompatible extension message and answers it with an ERROR reply', async () => {
+    const port = new MockExtensionPort();
+    vi.stubGlobal('chrome', { runtime: { connect: vi.fn(() => port) } satisfies ExtensionRuntimeClient });
+    render(
+      <CapturedJobInbox extensionId={extensionId} serviceFactory={createServiceFactory()} />,
+    );
+    await screen.findByText('No captured jobs have been confirmed yet.');
+
+    port.receive({
+      protocolVersion: 2,
+      messageId: 'old-start',
+      type: 'START_COMPARISON',
+      payload: { jobId: 'job_1', resumeIds: ['resume_1'] },
+    });
+
+    await screen.findByText(/still uses the old "jobId" field/);
+    expect(port.posted).toContainEqual(
+      expect.objectContaining({
+        type: 'ERROR',
+        messageId: 'old-start',
+        payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
+      }),
+    );
   });
 });

@@ -121,11 +121,13 @@ from an allow-listed PWA origin.
 The extension popup and PWA use a bidirectional external runtime port. Configure
 `VITE_TALENTFLY_EXTENSION_ID` in `client/.env` with the installed extension ID; without it,
 the PWA refuses the connection. The extension build generates an exact `externally_connectable`
-origin match from `VITE_TALENTFLY_PWA_ORIGIN`, and requests no broad host permissions. On
-**Send to TalentFly**, the reviewed capture is held in `chrome.storage.session` for up to 30
-minutes, then removed after the PWA confirms it was saved. It is not written to extension
-permanent storage. The popup can query saved jobs and ID/name-only resume summaries, select up
-to five resumes, create a local run, and open the PWA inbox with the run ID. Duplicate capture
+origin match from `VITE_TALENTFLY_PWA_ORIGIN`, and requests no broad host permissions. The
+popup connects on open, lists ID/name-only resume summaries in a single-choice dropdown (first
+resume selected), sends the extracted job and the chosen resume to create a local run, and links to
+the PWA inbox with the run ID. Nothing is kept in extension storage. The message contract, limits, error codes, and versioning rules are documented in
+[docs/EXTENSION_PWA_CONTRACT.md](docs/EXTENSION_PWA_CONTRACT.md). After rebuilding the extension, click
+**Reload** on `chrome://extensions` (Chrome keeps the old background worker otherwise) and refresh the
+PWA tab. Duplicate capture
 and run message IDs are idempotent. Comparison runs are persisted as `received`; their
 `analysing`, `done`, and `failed` transitions are guarded and persisted for later comparison
 workflow code.
@@ -139,15 +141,15 @@ npm run build:extension
 ```
 
 Load `extension/dist` through `chrome://extensions` → **Developer mode** → **Load
-unpacked**. The popup's **Capture this page** action uses `activeTab` and `scripting` to read the
-active tab only after the user clicks Capture. It extracts visible job details and presents an
-editable preview. The content is not sent until **Send to TalentFly** is clicked, then remains in
-temporary `chrome.storage.session` storage only until the PWA acknowledges the user's local
-save (or for at most 30 minutes). Only one unacknowledged capture is queued at a time. Pages that
-Chrome does not allow extensions to inspect show an explicit error. The development build links
-to `http://localhost:5173`; configure the client `.env` with the installed extension ID so the
-PWA accepts its external connection. In the PWA inbox, confirm the capture, then reopen the
-extension popup to load jobs/resumes and create a local run.
+unpacked**. When the popup opens on a whoz.com job page it reads the page with `activeTab` and
+`scripting` (no host permissions; other sites are never read) and shows the title, location, and
+Reference. The page URL is read from the tab and sent along but not displayed. **Create comparison
+run** re-reads the page, then sends the job and the selected resumes (the first resume is selected
+by default) to the open TalentFly PWA, which stores the job locally and creates the run. Nothing is
+stored by the extension. Each site has one extractor in `extension/src/extractors/`; site-specific
+extras go in the job's `otherFields`. The development build links to `http://localhost:5173`;
+configure the client `.env` with the installed extension ID so the PWA accepts its external
+connection, and keep the PWA open so the popup shows **TalentFly connected**.
 
 Production packaging requires the deployed HTTPS PWA origin:
 
