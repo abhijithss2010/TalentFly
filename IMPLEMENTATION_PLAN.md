@@ -29,8 +29,9 @@ Commit titles are examples, not commits already made. Keep each change small eno
 
 ### Implementation progress
 
-- **#1 workspace scaffold:** implemented and validated in the working tree; not committed because the TalentFly folder does not yet have Git metadata.
-- **#2 branded PWA shell:** implemented and validated in this working tree (all workspace tests, lint, type-check, build, and browser smoke check pass). This also remains uncommitted until the project repository is initialized.
+- **#1 workspace scaffold:** committed as `c4a33ea` (`first commit`).
+- **#2 branded PWA shell:** committed as `c20437b` (`feat(client): add branded desktop-style PWA shell`); all workspace tests, lint, type-check, build, and browser smoke checks passed.
+- **#3 extension popup and package:** implemented and validated in this working tree; ready to commit after final checks.
 
 ### Milestone 0 — establish the project, app shells, and delivery pipeline first
 

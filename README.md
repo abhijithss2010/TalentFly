@@ -45,5 +45,24 @@ The browser generates its launch splash screen from the PWA manifest's app name,
 background color. The UI uses system fonts so the app does not fetch fonts from a third
 party.
 
-The extension workspace can be built with `npm run build:extension`; its full browser
-manifest and packaging workflow will be completed in a later implementation step.
+## Chrome extension
+
+The extension popup and icons can be built for local development with:
+
+```bash
+npm run build:extension
+```
+
+Load `extension/dist` through `chrome://extensions` → **Developer mode** → **Load
+unpacked**. This development build links to `http://localhost:5173` and requests no
+browser permissions yet.
+
+Production packaging requires the deployed HTTPS PWA origin:
+
+```bash
+VITE_TALENTFLY_PWA_ORIGIN=https://your-talentfly-host.example npm run package:extension
+```
+
+The resulting versioned ZIP is written to the ignored `extension/artifacts/` directory.
+The package script includes only built extension files, excludes source maps and local
+credential files, and uses stable file ordering/timestamps for repeatable output.

@@ -2,10 +2,27 @@
   "name": "@talentfly/extension",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run typecheck && npm run build:icons && vite build --mode development",
+    "build:production": "npm run typecheck && npm run build:icons && vite build --mode production",
+    "build:icons": "node scripts/generate-icons.mjs",
+    "package": "npm run build:production && node scripts/package.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "oxlint src test",
+    "lint": "oxlint src test vite.config.ts",
     "test": "vitest run"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.2",
+    "jsdom": "^29.1.1",
+    "sharp": "^0.35.5",
+    "vite": "^8.3.8"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3",
+    "jsdom": "^29.1.1",
+    "sharp": "^0.35.5",
+    "vite": "^8.3.8"
   }
 }
