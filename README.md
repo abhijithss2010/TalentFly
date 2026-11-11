@@ -123,8 +123,10 @@ The extension popup and PWA use a bidirectional external runtime port. Configure
 the PWA refuses the connection. The extension build generates an exact `externally_connectable`
 origin match from `VITE_TALENTFLY_PWA_ORIGIN`, and requests no broad host permissions. The
 popup connects on open, lists ID/name-only resume summaries in a single-choice dropdown (first
-resume selected), sends the extracted job and the chosen resume to create a local run, and links to
-the PWA inbox with the run ID. Nothing is kept in extension storage. The message contract, limits, error codes, and versioning rules are documented in
+resume selected), sends the extracted job and the chosen resume to create a local run, then shows the run's live status (waiting, analysing, done, or failed with its error)
+and links to the exact report at `#history/<runId>`. Reopening the popup on the same job page shows
+that page's latest run again, because the PWA is the source of truth. A second run needs an explicit
+**Compare again**. Nothing is kept in extension storage. The message contract, limits, error codes, and versioning rules are documented in
 [docs/EXTENSION_PWA_CONTRACT.md](docs/EXTENSION_PWA_CONTRACT.md). After rebuilding the extension, click
 **Reload** on `chrome://extensions` (Chrome keeps the old background worker otherwise) and refresh the
 PWA tab. Duplicate capture

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProtocolMessage, type ProtocolMessage } from '@talentfly/shared';
 import {
   checkRelayWorker,
+  PwaRequestError,
   relayToPwa,
   type ExtensionRuntime,
 } from '../src/extension-transport';
@@ -111,7 +112,7 @@ describe('popup ⇄ service worker ⇄ PWA contract', () => {
   it('rejects an invalid request with the specific field instead of a generic shape error', async () => {
     const sw = await startServiceWorker();
     const bad = {
-      protocolVersion: 2,
+      protocolVersion: 3,
       messageId: 'bad',
       type: 'START_COMPARISON',
       payload: { jobId: 'job_1', resumeIds: ['resume_1'] },
@@ -158,5 +159,49 @@ describe('popup ⇄ service worker ⇄ PWA contract', () => {
     await expect(
       relayToPwa(emptyWorker, createProtocolMessage('PING', {})),
     ).rejects.toThrow('out of date or not running');
+  });
+
+  it.each([
+    ['GET_RUN_STATUS', { runId: 'run_9' }],
+    ['LATEST_RUN_FOR_URL', { sourceUrl: 'https://app.whoz.com/jobs/42#top' }],
+  ] as const)('relays %s to the PWA and returns its STATUS_UPDATE', async (type, payload) => {
+    const sw = await startServiceWorker();
+    const request = createProtocolMessage(type, payload as never);
+    const pending = relayToPwa(sw.popupRuntime, request);
+
+    expect(sw.toPwa).toEqual([request]);
+    sw.pwaSends(
+      createProtocolMessage(
+        'STATUS_UPDATE',
+        { runId: 'run_9', status: 'failed', error: 'Claude rate-limited the request.' },
+        request.messageId,
+      ),
+    );
+    await expect(pending).resolves.toMatchObject({
+      type: 'STATUS_UPDATE',
+      payload: { runId: 'run_9', status: 'failed', error: 'Claude rate-limited the request.' },
+    });
+  });
+
+  it('keeps the ERROR code so "no run yet" can be told apart from a real failure', async () => {
+    const sw = await startServiceWorker();
+    const request = createProtocolMessage('LATEST_RUN_FOR_URL', {
+      sourceUrl: 'https://app.whoz.com/jobs/404',
+    });
+    const pending = relayToPwa(sw.popupRuntime, request);
+    sw.pwaSends(
+      createProtocolMessage(
+        'ERROR',
+        { code: 'NOT_FOUND', message: 'No comparison has been started for this page yet.' },
+        request.messageId,
+      ),
+    );
+
+    const failure = await pending.catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(PwaRequestError);
+    expect(failure).toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'No comparison has been started for this page yet.',
+    });
   });
 });

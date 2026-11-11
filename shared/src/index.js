@@ -1,8 +1,9 @@
 /**
- * Bump when a message payload changes incompatibly (v2: START_COMPARISON carries `job`
- * instead of `jobId`, and the ERROR response was added).
+ * Bump when a message payload changes incompatibly or a new message type is added
+ * (v2: START_COMPARISON carries `job` instead of `jobId`, ERROR response added;
+ * v3: GET_RUN_STATUS and LATEST_RUN_FOR_URL added).
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MAX_PROTOCOL_MESSAGE_BYTES = 256 * 1024;
 export const MAX_JOB_DESCRIPTION_LENGTH = 20_000;
 export const MAX_JOB_FIELD_LENGTH = 200;
@@ -22,6 +23,8 @@ const MESSAGE_TYPES = new Set([
   'LIST_RESUMES',
   'RESUMES',
   'START_COMPARISON',
+  'GET_RUN_STATUS',
+  'LATEST_RUN_FOR_URL',
   'STATUS_UPDATE',
   'ERROR',
 ]);
@@ -80,6 +83,23 @@ function validateOtherFields(value) {
         validText(fieldValue, MAX_OTHER_FIELD_VALUE_LENGTH),
     )
   );
+}
+
+function validatePageUrl(value) {
+  if (typeof value !== 'string' || value.length > 2_000) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'https:' ||
+        (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
 }
 
 function validateJob(value) {
@@ -228,6 +248,14 @@ function validatePayload(type, payload) {
         payload.resumeIds.every((id) => typeof id === 'string' && RECORD_ID_PATTERN.test(id)) &&
         new Set(payload.resumeIds).size === payload.resumeIds.length
       );
+    case 'GET_RUN_STATUS':
+      return (
+        exactKeys(payload, ['runId']) &&
+        typeof payload.runId === 'string' &&
+        RECORD_ID_PATTERN.test(payload.runId)
+      );
+    case 'LATEST_RUN_FOR_URL':
+      return exactKeys(payload, ['sourceUrl']) && validatePageUrl(payload.sourceUrl);
     case 'ERROR':
       return (
         exactKeys(payload, ['code', 'message']) &&

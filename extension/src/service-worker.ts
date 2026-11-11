@@ -60,6 +60,8 @@ function expectedResponseTypes(type: ProtocolMessageType): ProtocolMessageType[]
     case 'LIST_JOBS':
       return ['JOBS', 'ERROR'];
     case 'START_COMPARISON':
+    case 'GET_RUN_STATUS':
+    case 'LATEST_RUN_FOR_URL':
       return ['STATUS_UPDATE', 'ERROR'];
     default:
       return [];
@@ -74,7 +76,7 @@ chrome.runtime.onConnectExternal.addListener((port) => {
 
   try {
     validatePwaMessage(
-      { protocolVersion: 2, messageId: 'validation', type: 'PING', payload: {} },
+      { protocolVersion: 3, messageId: 'validation', type: 'PING', payload: {} },
       {
         origin: port.sender.origin ?? new URL(port.sender.url ?? '').origin,
         extensionId: port.sender.id,

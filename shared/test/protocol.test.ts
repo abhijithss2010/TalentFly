@@ -4,6 +4,7 @@ import {
   isProtocolMessage,
   MAX_JOB_DESCRIPTION_LENGTH,
   normalizeAllowedPwaOrigins,
+  PROTOCOL_VERSION,
   ProtocolValidationError,
   validateExtensionMessage,
   validateProtocolMessage,
@@ -29,7 +30,7 @@ describe('shared extension protocol', () => {
     );
 
     expect(message).toEqual({
-      protocolVersion: 2,
+      protocolVersion: 3,
       messageId: 'capture_123',
       type: 'JOB_CAPTURED',
       payload: { job },
@@ -79,7 +80,7 @@ describe('shared extension protocol', () => {
       ProtocolValidationError,
     );
     expect(() => validateProtocolMessage({ ...ping, protocolVersion: 1 })).toThrow(
-      /Unsupported protocol version 1; this build speaks version 2\. Reload the TalentFly extension/,
+      /Unsupported protocol version 1; this build speaks version 3\. Reload the TalentFly extension/,
     );
     expect(isProtocolMessage({ ...ping, type: 'EXECUTE' })).toBe(false);
     expect(() => validateProtocolMessage({ ...ping, injected: true })).toThrow(
@@ -228,7 +229,7 @@ describe('shared extension protocol', () => {
 
   it('explains an old START_COMPARISON that still sends jobId', () => {
     const old = {
-      protocolVersion: 2,
+      protocolVersion: 3,
       messageId: 'old',
       type: 'START_COMPARISON',
       payload: { jobId: 'job_1', resumeIds: ['resume_1'] },
@@ -264,5 +265,38 @@ describe('shared extension protocol', () => {
     expect(() =>
       createProtocolMessage('ERROR', { code: 'INTERNAL', message: '' }, 'empty'),
     ).toThrow('"ERROR" message is invalid');
+  });
+
+  it('validates the run status lookup messages', () => {
+    const status = createProtocolMessage('GET_RUN_STATUS', { runId: 'run_123-abc' }, 'get');
+    expect(validateProtocolMessage(status)).toEqual(status);
+    const latest = createProtocolMessage(
+      'LATEST_RUN_FOR_URL',
+      { sourceUrl: 'https://app.whoz.com/jobs/1?tab=2#top' },
+      'latest',
+    );
+    expect(validateProtocolMessage(latest)).toEqual(latest);
+
+    expect(() => createProtocolMessage('GET_RUN_STATUS', { runId: '../x' }, 'bad')).toThrow(
+      '"GET_RUN_STATUS" message is invalid',
+    );
+    expect(() => createProtocolMessage('GET_RUN_STATUS', {} as never, 'empty')).toThrow(
+      '"GET_RUN_STATUS" message is invalid',
+    );
+    for (const sourceUrl of [
+      'javascript:alert(1)',
+      'http://example.com/x',
+      'https://user:pw@whoz.com/x',
+      'not a url',
+      `https://whoz.com/${'x'.repeat(2_000)}`,
+    ]) {
+      expect(() =>
+        createProtocolMessage('LATEST_RUN_FOR_URL', { sourceUrl }, 'url'),
+      ).toThrow('"LATEST_RUN_FOR_URL" message is invalid');
+    }
+  });
+
+  it('is on protocol version 3', () => {
+    expect(PROTOCOL_VERSION).toBe(3);
   });
 });

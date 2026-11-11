@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION: 2;
+export const PROTOCOL_VERSION: 3;
 export const MAX_PROTOCOL_MESSAGE_BYTES: 262144;
 export const MAX_JOB_DESCRIPTION_LENGTH: 20000;
 export const MAX_JOB_FIELD_LENGTH: 200;
@@ -20,6 +20,8 @@ export type ProtocolMessageType =
   | 'LIST_RESUMES'
   | 'RESUMES'
   | 'START_COMPARISON'
+  | 'GET_RUN_STATUS'
+  | 'LATEST_RUN_FOR_URL'
   | 'STATUS_UPDATE'
   | 'ERROR';
 
@@ -58,6 +60,10 @@ export interface ProtocolPayloadMap {
   LIST_RESUMES: Record<string, never>;
   RESUMES: { resumes: ResumeSummary[] };
   START_COMPARISON: { job: CapturedJob; resumeIds: string[] };
+  /** Reply: STATUS_UPDATE, or ERROR with code NOT_FOUND when the run does not exist. */
+  GET_RUN_STATUS: { runId: string };
+  /** Reply: STATUS_UPDATE for the latest run of that page URL, or ERROR NOT_FOUND. */
+  LATEST_RUN_FOR_URL: { sourceUrl: string };
   STATUS_UPDATE: {
     runId: string;
     status: RunStatus;

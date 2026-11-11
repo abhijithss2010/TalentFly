@@ -4,8 +4,14 @@ import {
   createProtocolMessage,
   type ProtocolMessage,
   type ResumeSummary,
+  type RunStatus,
 } from '@talentfly/shared';
-import { checkRelayWorker, relayToPwa, type ExtensionRuntime } from './extension-transport';
+import {
+  checkRelayWorker,
+  PwaRequestError,
+  relayToPwa,
+  type ExtensionRuntime,
+} from './extension-transport';
 import { UnsupportedSiteError } from './supported-site';
 
 interface PopupBridge {
@@ -57,6 +63,26 @@ function externalLink(text: string, url: URL, className: string): HTMLAnchorElem
   return link;
 }
 
+const DEFAULT_POLL_INTERVAL_MS = 2_000;
+const MAX_POLL_FAILURES = 3;
+
+interface TrackedRun {
+  runId: string;
+  status: RunStatus;
+  error?: string;
+}
+
+const STATUS_TEXT: Record<RunStatus, string> = {
+  received: 'Waiting for you in TalentFly. Open the result to review and send it.',
+  analysing: 'Comparing your resume with the job…',
+  done: 'Comparison complete.',
+  failed: 'The comparison failed. Open the result to try again.',
+};
+
+function isFinished(status: RunStatus): boolean {
+  return status === 'done' || status === 'failed';
+}
+
 type ConnectionState = 'checking' | 'connected' | 'disconnected';
 type JobState = 'reading' | 'ready' | 'unsupported' | 'error';
 
@@ -66,7 +92,9 @@ export function renderPopup(
   buildInfo: BuildInfo,
   extractJob: () => Promise<JobCapture> = captureCurrentTab,
   bridge: PopupBridge = browserPopupBridge(),
+  options: { pollIntervalMs?: number } = {},
 ): void {
+  const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   let connection: ConnectionState = 'checking';
   let jobState: JobState = 'reading';
   let job: JobCapture | null = null;
@@ -74,6 +102,12 @@ export function renderPopup(
   let selectedResumeId = '';
   let runRequest: { key: string; id: string } | null = null;
   let running = false;
+  // The PWA owns the run lifecycle; the popup only mirrors it and keeps nothing of its own.
+  let tracked: TrackedRun | null = null;
+  let generation = 0;
+  let lookupKey: string | null = null;
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
+  let pollFailures = 0;
 
   // Header
   const header = el('header', 'popup-header');
@@ -123,7 +157,8 @@ export function renderPopup(
 
   // Resumes + run
   const runCard = el('section', 'card');
-  runCard.append(el('h2', 'card-title', 'Compare with'));
+  const runCardTitle = el('h2', 'card-title', 'Compare with');
+  runCard.append(runCardTitle);
   const resumePickerLabel = el('label', 'resume-picker');
   resumePickerLabel.append(el('span', 'visually-hidden', 'Resume to compare'));
   const resumeSelect = el('select', 'resume-select');
@@ -136,7 +171,22 @@ export function renderPopup(
   const runButton = el('button', 'primary-button', 'Create comparison run');
   runButton.type = 'button';
   const runResult = el('div', 'run-result');
-  runCard.append(resumePickerLabel, runNote, runError, runButton, runResult);
+  const statusLine = el('p', 'status-line');
+  statusLine.setAttribute('role', 'status');
+  const statusChip = el('span', 'run-status');
+  const statusText = el('span', 'status-text');
+  statusLine.append(statusChip, statusText);
+  const statusError = el('p', 'card-error');
+  statusError.setAttribute('role', 'alert');
+  const statusProblem = el('p', 'card-note status-problem');
+  statusProblem.hidden = true;
+  const resultLink = el('a', 'text-button', 'Open result →');
+  resultLink.target = '_blank';
+  resultLink.rel = 'noopener noreferrer';
+  const compareAgainButton = el('button', 'secondary-button', 'Compare again');
+  compareAgainButton.type = 'button';
+  runResult.append(statusLine, statusError, resultLink, compareAgainButton);
+  runCard.append(resumePickerLabel, runNote, runError, statusProblem, runButton, runResult);
 
   function setField(list: HTMLElement, label: string, value: string): void {
     const term = el('dt', 'job-field-label', label);
@@ -162,7 +212,11 @@ export function renderPopup(
 
   function canRun(): boolean {
     return (
-      !running && jobState === 'ready' && connection === 'connected' && selectedResumeId !== ''
+      !running &&
+      tracked === null &&
+      jobState === 'ready' &&
+      connection === 'connected' &&
+      selectedResumeId !== ''
     );
   }
 
@@ -191,10 +245,26 @@ export function renderPopup(
 
     const showRun = jobState === 'ready';
     runCard.hidden = !showRun;
+    runCardTitle.textContent = tracked ? 'Comparison' : 'Compare with';
+    runButton.hidden = tracked !== null;
     runButton.disabled = !canRun();
     runButton.textContent = running ? 'Creating run…' : 'Create comparison run';
-    resumePickerLabel.hidden = connection !== 'connected' || resumes.length === 0;
-    if (connection !== 'connected') {
+    resumePickerLabel.hidden = tracked !== null || connection !== 'connected' || resumes.length === 0;
+    runResult.hidden = tracked === null;
+    if (tracked) {
+      statusChip.textContent = tracked.status;
+      statusChip.className = `run-status run-status-${tracked.status}`;
+      statusText.textContent = STATUS_TEXT[tracked.status];
+      statusError.hidden = tracked.status !== 'failed' || !tracked.error;
+      statusError.textContent = tracked.error ?? '';
+      const resultUrl = new URL(pwaOrigin);
+      resultUrl.hash = `history/${tracked.runId}`;
+      resultLink.href = resultUrl.toString();
+      compareAgainButton.hidden = !isFinished(tracked.status);
+    }
+    if (tracked) {
+      runNote.textContent = '';
+    } else if (connection !== 'connected') {
       runNote.textContent = 'Connect to TalentFly to choose a resume.';
     } else if (resumes.length === 0) {
       runNote.textContent = 'No resumes yet. Add one in TalentFly, then choose Refresh.';
@@ -219,6 +289,93 @@ export function renderPopup(
     runError.hidden = true;
     render();
   });
+
+  function clearPoll(): void {
+    if (pollTimer !== null) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function schedulePoll(): void {
+    clearPoll();
+    if (tracked && !isFinished(tracked.status)) {
+      pollTimer = setTimeout(() => void poll(), pollIntervalMs);
+    }
+  }
+
+  function track(update: TrackedRun): void {
+    tracked = { runId: update.runId, status: update.status, error: update.error };
+    pollFailures = 0;
+    statusProblem.textContent = '';
+    statusProblem.hidden = true;
+    render();
+    schedulePoll();
+  }
+
+  async function poll(): Promise<void> {
+    const current = tracked;
+    if (!current || isFinished(current.status)) return;
+    try {
+      const reply = await bridge.request(
+        createProtocolMessage('GET_RUN_STATUS', { runId: current.runId }),
+      );
+      if (reply.type !== 'STATUS_UPDATE') throw new Error('Unexpected status response.');
+      if (tracked?.runId === current.runId) {
+        track(reply.payload);
+      }
+      return;
+    } catch (error) {
+      if (tracked?.runId !== current.runId) return;
+      if (error instanceof PwaRequestError && error.code === 'NOT_FOUND') {
+        // The run was deleted in TalentFly.
+        tracked = null;
+        clearPoll();
+        render();
+        return;
+      }
+      pollFailures += 1;
+      if (pollFailures >= MAX_POLL_FAILURES) {
+        statusProblem.textContent =
+          'The status could not be refreshed. Open TalentFly, then choose Connect.';
+        statusProblem.hidden = false;
+        render();
+        return;
+      }
+    }
+    schedulePoll();
+  }
+
+  /** On open, show a run that already exists for this page so work is never started twice. */
+  async function lookupExistingRun(): Promise<void> {
+    if (connection !== 'connected' || jobState !== 'ready' || !job || tracked) return;
+    if (lookupKey === job.sourceUrl) return;
+    const key = job.sourceUrl;
+    lookupKey = key;
+    try {
+      const reply = await bridge.request(
+        createProtocolMessage('LATEST_RUN_FOR_URL', { sourceUrl: key }),
+      );
+      if (reply.type === 'STATUS_UPDATE' && !tracked && lookupKey === key) {
+        track(reply.payload);
+      }
+    } catch (error) {
+      if (error instanceof PwaRequestError && error.code === 'NOT_FOUND') return;
+      lookupKey = null;
+      statusProblem.textContent = 'Could not check for an earlier comparison of this job.';
+      statusProblem.hidden = false;
+    }
+  }
+
+  function compareAgain(): void {
+    clearPoll();
+    tracked = null;
+    generation += 1;
+    runRequest = null;
+    // Do not look the old run up again; the user asked for a new one.
+    lookupKey = job?.sourceUrl ?? null;
+    render();
+  }
 
   async function connect(): Promise<void> {
     runError.hidden = true;
@@ -247,13 +404,19 @@ export function renderPopup(
       }
       connection = 'connected';
       renderResumes();
+      if (tracked && !isFinished(tracked.status)) {
+        track(tracked);
+      }
     } catch (error) {
       connection = 'disconnected';
+      lookupKey = null;
+      clearPoll();
       connectionError.textContent =
         error instanceof Error ? error.message : 'Could not connect to TalentFly.';
       connectionError.hidden = false;
     }
     render();
+    void lookupExistingRun();
   }
 
   async function extract(): Promise<void> {
@@ -269,13 +432,13 @@ export function renderPopup(
         error instanceof Error ? error.message : 'The job details could not be read.';
     }
     render();
+    void lookupExistingRun();
   }
 
   async function createRun(): Promise<void> {
     if (!canRun()) return;
     running = true;
     runError.hidden = true;
-    runResult.replaceChildren();
     render();
     // Always send what the page shows right now, not what was read when the popup opened.
     try {
@@ -293,6 +456,7 @@ export function renderPopup(
     // One message ID per job + resume selection: a retry (even after a timeout where the
     // first request did reach the PWA) is deduplicated there instead of creating a second run.
     const key = JSON.stringify([
+      generation,
       job.sourceUrl,
       job.title,
       job.description,
@@ -316,22 +480,14 @@ export function renderPopup(
       if (response.type !== 'STATUS_UPDATE') {
         throw new Error('TalentFly returned an unexpected status.');
       }
-      const { runId, status, error } = response.payload;
-      runResult.append(el('p', 'card-note', `Run ${runId} · ${status}`));
-      if (status === 'failed') {
-        const failure = el('p', 'card-error', error ?? 'The comparison run failed.');
-        failure.setAttribute('role', 'alert');
-        runResult.append(failure);
-      }
-      const resultUrl = new URL(pwaOrigin);
-      resultUrl.searchParams.set('runId', runId);
-      resultUrl.hash = 'inbox';
-      runResult.append(externalLink('Open result →', resultUrl, 'text-button'));
+      track(response.payload);
     } catch (error) {
       runError.textContent =
         error instanceof Error ? error.message : 'The comparison run could not be created.';
       runError.hidden = false;
       connection = 'disconnected';
+      // The PWA may have created the run even though the reply was lost; look again on reconnect.
+      lookupKey = null;
     } finally {
       running = false;
       render();
@@ -341,6 +497,7 @@ export function renderPopup(
   refreshButton.addEventListener('click', () => void connect());
   retryExtract.addEventListener('click', () => void extract());
   runButton.addEventListener('click', () => void createRun());
+  compareAgainButton.addEventListener('click', compareAgain);
 
   const footerLink = el('footer', 'popup-footer');
   footerLink.append(

@@ -28,11 +28,16 @@ Max serialized size 256 KiB. Unknown keys are rejected.
 | `PING` | popup → PWA | `{}` | `PONG` `{ ready: true }` |
 | `LIST_RESUMES` | popup → PWA | `{}` | `RESUMES` `{ resumes: [{ id, name }] }` (IDs and names only) |
 | `START_COMPARISON` | popup → PWA | `{ job, resumeIds }` | `STATUS_UPDATE` `{ runId, status, error? }` |
+| `GET_RUN_STATUS` | popup → PWA | `{ runId }` | `STATUS_UPDATE`, or `ERROR` `NOT_FOUND` |
+| `LATEST_RUN_FOR_URL` | popup → PWA | `{ sourceUrl }` (https, or http on localhost; max 2 000 chars) | `STATUS_UPDATE` for the newest run of any saved job read from that page (the `#fragment` is ignored), or `ERROR` `NOT_FOUND` |
 | `LIST_JOBS` | popup → PWA | `{}` | `JOBS` `{ jobs: [{ id, title, company?, location? }] }` (unused by the popup) |
 | `JOB_CAPTURED` | extension → PWA | `{ job }` | `CAPTURE_ACK` (legacy review flow; unused by the popup) |
 | `ERROR` | PWA → extension | `{ code, message }` | — reply to **any** request the PWA rejects or fails |
 
-`status` is one of `received | analysing | done | failed`. `ERROR.code` is one of
+`status` is one of `received | analysing | done | failed`; `error` is included for `failed`
+runs. The PWA owns the run lifecycle: the extension stores nothing and asks the PWA each time it
+opens (`LATEST_RUN_FOR_URL`) and while a run is `received` or `analysing` (`GET_RUN_STATUS`,
+polled every 2 s, stopping on `done`/`failed` or after 3 consecutive failures). `ERROR.code` is one of
 `INVALID_REQUEST | UNSUPPORTED_VERSION | NOT_FOUND | INTERNAL`; `message` is user-readable
 (1–500 chars) and is shown in the popup.
 
@@ -50,12 +55,18 @@ Max serialized size 256 KiB. Unknown keys are rejected.
 The extension builds `job` with `toCapturedJob()` (extension/src/job-capture.ts), which trims
 and clamps every field to these limits before a message is created.
 
+### Result link
+
+The popup links to the exact run: `<PWA origin>/#history/<runId>`. The older
+`?runId=<id>#inbox` link still opens the inbox and offers a link to the report.
+
 ### Idempotency
 
 `START_COMPARISON.messageId` is the idempotency key: the PWA stores the job and creates the run
 once per `messageId`, and returns the same run for a retry. The popup derives the ID from the
-job content and chosen resume, so retrying the same choice is safe and a different resume is a
-new run.
+job content, chosen resume, and a "generation" that only the explicit **Compare again** action
+increments. Retrying the same choice (even after a lost reply) is safe, a different resume is a new
+run, and while a run for the page is waiting or analysing the popup offers no second one.
 
 ## Versioning
 
@@ -66,7 +77,8 @@ version rejects the message with:
 > on chrome://extensions and refresh the TalentFly tab.
 
 History: **v1** initial; **v2** `START_COMPARISON` carries `job` instead of `jobId`, `ERROR`
-response added.
+response added; **v3** `GET_RUN_STATUS` and `LATEST_RUN_FOR_URL` added (a new message type is a
+version bump so an out-of-date worker or PWA is reported clearly).
 
 The extension is loaded from disk but Chrome keeps running the previous service worker until the
 extension is reloaded, so a popup can briefly be newer than its worker. The popup therefore

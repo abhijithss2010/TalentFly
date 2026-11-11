@@ -384,7 +384,7 @@ describe('captured job inbox', () => {
     await screen.findByText('No captured jobs have been confirmed yet.');
 
     port.receive({
-      protocolVersion: 2,
+      protocolVersion: 3,
       messageId: 'old-start',
       type: 'START_COMPARISON',
       payload: { jobId: 'job_1', resumeIds: ['resume_1'] },
@@ -398,5 +398,74 @@ describe('captured job inbox', () => {
         payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
       }),
     );
+  });
+
+  it('answers status lookups by run ID and by page URL, and reports unknown ones as NOT_FOUND', async () => {
+    const port = new MockExtensionPort();
+    vi.stubGlobal('chrome', { runtime: { connect: vi.fn(() => port) } satisfies ExtensionRuntimeClient });
+    render(
+      <CapturedJobInbox extensionId={extensionId} serviceFactory={createServiceFactory()} />,
+    );
+    await screen.findByText('No captured jobs have been confirmed yet.');
+    const services = openedServices[0];
+    const resumeId = createRecordId('resume');
+    await services.resumes.save({
+      id: resumeId,
+      name: 'Resume',
+      fileName: 'r.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 1,
+      file: new Blob(['x']),
+      extractedText: 'Experience',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const start = createProtocolMessage(
+      'START_COMPARISON',
+      { job: capturedJob, resumeIds: [resumeId] },
+      'lookup-start',
+    );
+    port.receive(start);
+    await waitFor(() => expect(port.posted).toHaveLength(1));
+    const { runId } = (port.posted[0] as { payload: { runId: string } }).payload;
+
+    port.receive(createProtocolMessage('GET_RUN_STATUS', { runId }, 'get-1'));
+    await waitFor(() => expect(port.posted).toHaveLength(2));
+    expect(port.posted[1]).toMatchObject({
+      type: 'STATUS_UPDATE',
+      messageId: 'get-1',
+      payload: { runId, status: 'received' },
+    });
+
+    port.receive(
+      createProtocolMessage(
+        'LATEST_RUN_FOR_URL',
+        { sourceUrl: `${capturedJob.sourceUrl}#section` },
+        'latest-1',
+      ),
+    );
+    await waitFor(() => expect(port.posted).toHaveLength(3));
+    expect(port.posted[2]).toMatchObject({
+      type: 'STATUS_UPDATE',
+      messageId: 'latest-1',
+      payload: { runId, status: 'received' },
+    });
+
+    await services.transitionRun(runId, 'failed', 'Claude rate-limited the request.');
+    port.receive(createProtocolMessage('GET_RUN_STATUS', { runId }, 'get-2'));
+    await waitFor(() => expect(port.posted).toHaveLength(4));
+    expect(port.posted[3]).toMatchObject({
+      type: 'STATUS_UPDATE',
+      payload: { runId, status: 'failed', error: 'Claude rate-limited the request.' },
+    });
+
+    port.receive(createProtocolMessage('GET_RUN_STATUS', { runId: 'run_unknown' }, 'get-3'));
+    port.receive(
+      createProtocolMessage('LATEST_RUN_FOR_URL', { sourceUrl: 'https://app.whoz.com/jobs/404' }, 'latest-2'),
+    );
+    await waitFor(() => expect(port.posted).toHaveLength(6));
+    expect(port.posted[4]).toMatchObject({ type: 'ERROR', messageId: 'get-3', payload: { code: 'NOT_FOUND' } });
+    expect(port.posted[5]).toMatchObject({ type: 'ERROR', messageId: 'latest-2', payload: { code: 'NOT_FOUND' } });
   });
 });

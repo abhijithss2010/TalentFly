@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderPopup } from '../src/popup-ui';
 import type { JobCapture } from '../src/job-capture';
+import { PwaRequestError } from '../src/extension-transport';
 import { UnsupportedSiteError } from '../src/supported-site';
 import { createProtocolMessage, type ProtocolMessage } from '@talentfly/shared';
 
@@ -18,12 +19,31 @@ const capture: JobCapture = {
 };
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+interface FakeRun {
+  runId: string;
+  status: 'received' | 'analysing' | 'done' | 'failed';
+  error?: string;
+}
+
 interface FakePwa {
   reachable: boolean;
   resumes: { id: string; name: string }[];
   startReply?: (message: ProtocolMessage) => ProtocolMessage;
+  /** Runs the PWA knows about, by ID. */
+  runs: Record<string, FakeRun>;
+  /** The run LATEST_RUN_FOR_URL returns, if any. */
+  latest?: string;
+  /** Makes GET_RUN_STATUS fail while set. */
+  pollFailure?: Error;
   calls: ProtocolMessage[];
 }
+
+const statusMessage = (run: FakeRun, messageId: string) =>
+  createProtocolMessage(
+    'STATUS_UPDATE',
+    { runId: run.runId, status: run.status, ...(run.error ? { error: run.error } : {}) },
+    messageId,
+  );
 
 function bridgeFor(pwa: FakePwa) {
   return {
@@ -36,15 +56,24 @@ function bridgeFor(pwa: FakePwa) {
           return createProtocolMessage('PONG', { ready: true }, message.messageId);
         case 'LIST_RESUMES':
           return createProtocolMessage('RESUMES', { resumes: pwa.resumes }, message.messageId);
-        case 'START_COMPARISON':
-          return (
-            pwa.startReply?.(message) ??
-            createProtocolMessage(
-              'STATUS_UPDATE',
-              { runId: 'run_1', status: 'received' },
-              message.messageId,
-            )
-          );
+        case 'START_COMPARISON': {
+          if (pwa.startReply) return pwa.startReply(message);
+          const run: FakeRun = { runId: `run_${Object.keys(pwa.runs).length + 1}`, status: 'received' };
+          pwa.runs[run.runId] = run;
+          pwa.latest = run.runId;
+          return statusMessage(run, message.messageId);
+        }
+        case 'LATEST_RUN_FOR_URL': {
+          const run = pwa.latest ? pwa.runs[pwa.latest] : undefined;
+          if (!run) throw new PwaRequestError('No comparison has been started for this page.', 'NOT_FOUND');
+          return statusMessage(run, message.messageId);
+        }
+        case 'GET_RUN_STATUS': {
+          if (pwa.pollFailure) throw pwa.pollFailure;
+          const run = pwa.runs[message.payload.runId];
+          if (!run) throw new PwaRequestError('That run was not found.', 'NOT_FOUND');
+          return statusMessage(run, message.messageId);
+        }
         default:
           throw new Error(`Unexpected ${message.type}`);
       }
@@ -67,6 +96,7 @@ describe('extension popup', () => {
         { id: 'resume_1', name: 'Frontend resume' },
         { id: 'resume_2', name: 'Backend resume' },
       ],
+      runs: {},
       calls: [],
     };
   });
@@ -229,14 +259,14 @@ describe('extension popup', () => {
     expect(runButton()?.disabled).toBe(true);
   });
 
-  it('sends the extracted job and exactly the chosen resume, then links to the run', async () => {
+  it('sends the extracted job and exactly the chosen resume, then shows the run and links to its detail route', async () => {
     renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
     await flush();
     choose('resume_2');
     runButton()?.click();
     await flush();
 
-    const start = pwa.calls.at(-1);
+    const start = pwa.calls.filter((call) => call.type === 'START_COMPARISON').at(-1);
     expect(start).toMatchObject({
       type: 'START_COMPARISON',
       payload: {
@@ -251,12 +281,15 @@ describe('extension popup', () => {
         resumeIds: ['resume_2'],
       },
     });
-    expect(root.textContent).toContain('Run run_1 · received');
+    expect(root.querySelector('.run-status')?.textContent).toBe('received');
+    expect(root.querySelector('.status-text')?.textContent).toContain('Waiting for you in TalentFly');
     const link = root.querySelector<HTMLAnchorElement>('.run-result a');
     const url = new URL(link?.href ?? '');
-    expect(url.searchParams.get('runId')).toBe('run_1');
-    expect(url.hash).toBe('#inbox');
+    expect(url.origin).toBe(ORIGIN);
+    expect(url.hash).toBe('#history/run_1');
+    expect(url.search).toBe('');
     expect(link?.rel).toContain('noopener');
+    expect(runButton()?.hidden).toBe(true);
   });
 
   it('reuses the same message ID when retrying so a run cannot be duplicated', async () => {
@@ -267,7 +300,7 @@ describe('extension popup', () => {
     };
     runButton()?.click();
     await flush();
-    expect(root.querySelector('.run-result')?.textContent).toBe('');
+    expect(root.querySelector<HTMLElement>('.run-result')?.hidden).toBe(true);
     expect(root.querySelector('.card-error:not([hidden])')?.textContent).toContain('did not respond');
     expect(connectionState()).toBe('disconnected');
 
@@ -280,31 +313,201 @@ describe('extension popup', () => {
     const starts = pwa.calls.filter((call) => call.type === 'START_COMPARISON');
     expect(starts).toHaveLength(2);
     expect(starts[1].messageId).toBe(starts[0].messageId);
-
-    // A different resume is a different run, so it gets a new message ID.
-    choose('resume_2');
-    runButton()?.click();
-    await flush();
-    const latest = pwa.calls.filter((call) => call.type === 'START_COMPARISON').at(-1);
-    expect(latest?.messageId).not.toBe(starts[0].messageId);
   });
 
-  it('shows a failed run status with its error', async () => {
+  it('shows a failed run status with its error and the result link', async () => {
     pwa.startReply = (message) =>
-      createProtocolMessage(
-        'STATUS_UPDATE',
-        { runId: 'run_9', status: 'failed', error: 'Provider key is missing.' },
-        message.messageId,
-      );
+      statusMessage({ runId: 'run_9', status: 'failed', error: 'Provider key is missing.' }, message.messageId);
     renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa));
     await flush();
     runButton()?.click();
     await flush();
 
-    expect(root.querySelector('.run-result [role="alert"]')?.textContent).toBe(
-      'Provider key is missing.',
-    );
-    expect(root.querySelector<HTMLAnchorElement>('.run-result a')?.href).toContain('runId=run_9');
+    expect(root.querySelector('.run-result [role="alert"]')?.textContent).toBe('Provider key is missing.');
+    expect(root.querySelector('.status-text')?.textContent).toContain('Open the result to try again');
+    expect(root.querySelector<HTMLAnchorElement>('.run-result a')?.href).toBe(`${ORIGIN}/#history/run_9`);
+  });
+
+  describe('run status synchronisation', () => {
+    const open = (extra: Parameters<typeof renderPopup>[5] = { pollIntervalMs: 10 }) =>
+      renderPopup(root, ORIGIN, buildInfo, async () => capture, bridgeFor(pwa), extra);
+    const statusChip = () => root.querySelector('.run-status')?.textContent;
+    const polls = () => pwa.calls.filter((call) => call.type === 'GET_RUN_STATUS');
+    const compareAgain = () =>
+      [...root.querySelectorAll<HTMLButtonElement>('.run-result button')].find(
+        (button) => button.textContent === 'Compare again',
+      );
+
+    it('asks the PWA for an existing run of this page when the popup opens', async () => {
+      pwa.runs.run_5 = { runId: 'run_5', status: 'received' };
+      pwa.latest = 'run_5';
+      open();
+      await flush();
+
+      const lookup = pwa.calls.find((call) => call.type === 'LATEST_RUN_FOR_URL');
+      expect(lookup?.payload).toEqual({ sourceUrl: capture.sourceUrl });
+      expect(statusChip()).toBe('received');
+      expect(root.querySelector<HTMLAnchorElement>('.run-result a')?.href).toBe(`${ORIGIN}/#history/run_5`);
+      // A run is already waiting, so no second one can be started from here.
+      expect(runButton()?.hidden).toBe(true);
+      expect(resumeSelect()?.closest('label')?.hidden).toBe(true);
+      expect(compareAgain()?.hidden).toBe(true);
+      expect(pwa.calls.some((call) => call.type === 'START_COMPARISON')).toBe(false);
+    });
+
+    it('shows a run that finished while the popup was closed', async () => {
+      pwa.runs.run_6 = { runId: 'run_6', status: 'done' };
+      pwa.latest = 'run_6';
+      open();
+      await flush();
+
+      expect(statusChip()).toBe('done');
+      expect(root.querySelector('.status-text')?.textContent).toBe('Comparison complete.');
+      expect(compareAgain()?.hidden).toBe(false);
+      // Finished runs are not polled.
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(polls()).toHaveLength(0);
+    });
+
+    it('shows a failure that happened while the popup was closed, with its error', async () => {
+      pwa.runs.run_7 = { runId: 'run_7', status: 'failed', error: 'Claude rate-limited the request.' };
+      pwa.latest = 'run_7';
+      open();
+      await flush();
+
+      expect(statusChip()).toBe('failed');
+      expect(root.querySelector('.run-result [role="alert"]')?.textContent).toBe(
+        'Claude rate-limited the request.',
+      );
+    });
+
+    it('follows the run live until it finishes, then stops polling', async () => {
+      open();
+      await flush();
+      runButton()?.click();
+      await flush();
+      expect(statusChip()).toBe('received');
+
+      pwa.runs.run_1.status = 'analysing';
+      await vi.waitFor(() => expect(statusChip()).toBe('analysing'));
+      expect(root.querySelector('.status-text')?.textContent).toContain('Comparing your resume');
+      expect(compareAgain()?.hidden).toBe(true);
+
+      pwa.runs.run_1.status = 'done';
+      await vi.waitFor(() => expect(statusChip()).toBe('done'));
+      const settled = polls().length;
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(polls()).toHaveLength(settled);
+      expect(compareAgain()?.hidden).toBe(false);
+    });
+
+    it('stops after repeated poll failures, says so, and resumes when reconnected', async () => {
+      open();
+      await flush();
+      runButton()?.click();
+      await flush();
+
+      pwa.pollFailure = new Error('The TalentFly PWA did not respond in time. Retry the action.');
+      await vi.waitFor(() =>
+        expect(root.querySelector('.status-problem:not([hidden])')?.textContent).toContain(
+          'status could not be refreshed',
+        ),
+      );
+      expect(polls()).toHaveLength(3);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(polls()).toHaveLength(3);
+
+      pwa.pollFailure = undefined;
+      pwa.runs.run_1.status = 'done';
+      root.querySelector<HTMLButtonElement>('.connection-refresh')?.click();
+      await vi.waitFor(() => expect(statusChip()).toBe('done'));
+      expect(root.querySelector<HTMLElement>('.status-problem')?.hidden).toBe(true);
+    });
+
+    it('returns to the create state if the run was deleted in TalentFly', async () => {
+      open();
+      await flush();
+      runButton()?.click();
+      await flush();
+
+      delete pwa.runs.run_1;
+      pwa.latest = undefined;
+      await vi.waitFor(() => expect(runButton()?.hidden).toBe(false));
+      expect(root.querySelector<HTMLElement>('.run-result')?.hidden).toBe(true);
+    });
+
+    it('needs an explicit "Compare again" to start another run, and then uses a new message ID', async () => {
+      pwa.runs.run_6 = { runId: 'run_6', status: 'done' };
+      pwa.latest = 'run_6';
+      open();
+      await flush();
+      expect(runButton()?.hidden).toBe(true);
+
+      compareAgain()?.click();
+      expect(runButton()?.hidden).toBe(false);
+      expect(runButton()?.disabled).toBe(false);
+      expect(pwa.calls.filter((call) => call.type === 'START_COMPARISON')).toHaveLength(0);
+
+      runButton()?.click();
+      await flush();
+      const starts = pwa.calls.filter((call) => call.type === 'START_COMPARISON');
+      expect(starts).toHaveLength(1);
+      expect(statusChip()).toBe('received');
+      expect(root.querySelector<HTMLAnchorElement>('.run-result a')?.href).toBe(`${ORIGIN}/#history/run_2`);
+
+      // Refreshing must not bring the old finished run back over the new one.
+      root.querySelector<HTMLButtonElement>('.connection-refresh')?.click();
+      await flush();
+      expect(root.querySelector<HTMLAnchorElement>('.run-result a')?.href).toBe(`${ORIGIN}/#history/run_2`);
+    });
+
+    it('finds a run whose reply was lost and does not offer to start it twice', async () => {
+      open();
+      await flush();
+      // The PWA created the run, but the reply never reached the popup.
+      pwa.startReply = () => {
+        pwa.runs.run_1 = { runId: 'run_1', status: 'received' };
+        pwa.latest = 'run_1';
+        throw new Error('The TalentFly PWA did not respond in time. Retry the action.');
+      };
+      runButton()?.click();
+      await flush();
+      expect(connectionState()).toBe('disconnected');
+
+      pwa.startReply = undefined;
+      root.querySelector<HTMLButtonElement>('.connection-refresh')?.click();
+      await flush();
+
+      expect(statusChip()).toBe('received');
+      expect(runButton()?.hidden).toBe(true);
+      expect(pwa.calls.filter((call) => call.type === 'START_COMPARISON')).toHaveLength(1);
+    });
+
+    it('tells the user when the earlier-run check itself fails, without blocking a new run', async () => {
+      const bridge = bridgeFor(pwa);
+      renderPopup(root, ORIGIN, buildInfo, async () => capture, {
+        ...bridge,
+        async request(message: ProtocolMessage) {
+          if (message.type === 'LATEST_RUN_FOR_URL') throw new Error('Lookup failed.');
+          return bridge.request(message);
+        },
+      });
+      await flush();
+
+      expect(root.querySelector('.status-problem:not([hidden])')?.textContent).toBe(
+        'Could not check for an earlier comparison of this job.',
+      );
+      expect(root.querySelector<HTMLElement>('.run-result')?.hidden).toBe(true);
+      expect(runButton()?.hidden).toBe(false);
+      expect(runButton()?.disabled).toBe(false);
+    });
+
+    it('does not look for earlier runs on unsupported pages or while disconnected', async () => {
+      pwa.reachable = false;
+      open();
+      await flush();
+      expect(pwa.calls.some((call) => call.type === 'LATEST_RUN_FOR_URL')).toBe(false);
+    });
   });
 
   it('re-reads the page right before creating the run and sends the fresh values', async () => {

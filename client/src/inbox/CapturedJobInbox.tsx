@@ -10,6 +10,7 @@ import {
   type LocalDataServices,
 } from '../data/local-data-service';
 import type { ComparisonRunRecord, JobRecord, ResumeRecord } from '../data/models';
+import { latestRunForUrl } from '../comparison/run-lookup';
 import { RunPanel } from '../comparison/RunPanel';
 import type { CredentialVault } from '../providers/credential-vault';
 import type { ProviderRegistry } from '../providers/provider-adapter';
@@ -117,7 +118,25 @@ export function CapturedJobInbox({
     let openPromise: Promise<void>;
     const allowedOrigins = [window.location.origin];
 
-    const REQUEST_TYPES = new Set(['PING', 'LIST_RESUMES', 'LIST_JOBS', 'START_COMPARISON']);
+    const REQUEST_TYPES = new Set([
+      'PING',
+      'LIST_RESUMES',
+      'LIST_JOBS',
+      'START_COMPARISON',
+      'GET_RUN_STATUS',
+      'LATEST_RUN_FOR_URL',
+    ]);
+
+    const statusReply = (run: ComparisonRunRecord, messageId: string) =>
+      createProtocolMessage(
+        'STATUS_UPDATE',
+        {
+          runId: run.id,
+          status: run.status,
+          ...(run.status === 'failed' && run.error ? { error: run.error.slice(0, 1_000) } : {}),
+        },
+        messageId,
+      );
 
     function errorReply(
       messageId: string,
@@ -227,14 +246,34 @@ export function CapturedJobInbox({
             resumeIds: message.payload.resumeIds,
           });
           await refresh();
-          respond(
-            createProtocolMessage(
-              'STATUS_UPDATE',
-              { runId: run.id, status: run.status },
-              message.messageId,
-            ),
-          );
+          respond(statusReply(run, message.messageId));
           setNotice(`Comparison run ${run.id} was saved locally.`);
+          return;
+        }
+        case 'GET_RUN_STATUS': {
+          const run = await services.runs.get(message.payload.runId);
+          respond(
+            run
+              ? statusReply(run, message.messageId)
+              : createProtocolMessage(
+                  'ERROR',
+                  { code: 'NOT_FOUND', message: 'That comparison run was not found in TalentFly.' },
+                  message.messageId,
+                ),
+          );
+          return;
+        }
+        case 'LATEST_RUN_FOR_URL': {
+          const run = await latestRunForUrl(services, message.payload.sourceUrl);
+          respond(
+            run
+              ? statusReply(run, message.messageId)
+              : createProtocolMessage(
+                  'ERROR',
+                  { code: 'NOT_FOUND', message: 'No comparison has been started for this page yet.' },
+                  message.messageId,
+                ),
+          );
           return;
         }
         case 'PONG':

@@ -1,6 +1,7 @@
 import {
   PROTOCOL_VERSION,
   validateProtocolMessage,
+  type ErrorCode,
   type ProtocolMessage,
 } from '@talentfly/shared';
 
@@ -12,6 +13,17 @@ export interface ExtensionRuntime {
     callback: (response: unknown) => void,
   ): void;
   lastError?: { message?: string };
+}
+
+/** The PWA answered a request with an ERROR reply. `code` says why, for example NOT_FOUND. */
+export class PwaRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code: ErrorCode,
+  ) {
+    super(message);
+    this.name = 'PwaRequestError';
+  }
 }
 
 const OUTDATED_WORKER_MESSAGE =
@@ -74,7 +86,7 @@ export async function relayToPwa(
   }
   const reply = validateProtocolMessage(response);
   if (reply.type === 'ERROR') {
-    throw new Error(reply.payload.message);
+    throw new PwaRequestError(reply.payload.message, reply.payload.code);
   }
   return reply;
 }
