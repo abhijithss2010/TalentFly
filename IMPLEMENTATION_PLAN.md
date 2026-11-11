@@ -36,6 +36,7 @@ Commit titles are examples, not commits already made. Keep each change small eno
 - **#5 commit-based build versions:** implemented and validated in this working tree; the public server endpoint and PWA diagnostics show the independent client, server, and reported extension builds.
 - **#6 Firebase and store release setup:** documented in `docs/FIREBASE_AND_RELEASES.md`; commands and current deployment boundaries are recorded for the first release.
 - **#7 local data model and IndexedDB storage:** implemented in this working tree; schema upgrades preserve existing records, typed repositories provide local-only access, and import/export/delete-all have client tests.
+- **#8 resume library and file import:** implemented in this working tree; PDF, DOCX, and PPTX parsing, local file persistence, library controls, limits, and error states have client tests.
 
 ### Milestone 0 — establish the project, app shells, and delivery pipeline first
 

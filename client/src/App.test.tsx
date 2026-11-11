@@ -7,10 +7,10 @@ describe('PWA workspace shell', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: 'Overview', level: 1 })).toBeTruthy();
-    fireEvent.click(screen.getByRole('link', { name: 'Resume library0' }));
+    fireEvent.click(screen.getByRole('link', { name: /Resume library/ }));
 
     expect(screen.getByRole('heading', { name: 'Resume library', level: 1 })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Your next chapter starts here.' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Keep your experience close.' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeTruthy();

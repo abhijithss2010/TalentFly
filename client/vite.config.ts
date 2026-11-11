@@ -11,7 +11,7 @@ function serviceWorkerPlugin(): Plugin {
     apply: 'build',
     generateBundle(_options, bundle) {
       const buildAssets = Object.keys(bundle).filter(
-        (fileName) => fileName.startsWith('assets/') && /\.(js|css)$/.test(fileName),
+        (fileName) => fileName.startsWith('assets/') && /\.(js|css|mjs)$/.test(fileName),
       );
       const buildId = createHash('sha256')
         .update(buildAssets.join('\n'))
@@ -32,6 +32,9 @@ function serviceWorkerPlugin(): Plugin {
 }
 
 export default defineConfig({
+  optimizeDeps: {
+    exclude: ['pdfjs-dist'],
+  },
   define: {
     __TALENTFLY_BUILD_INFO__: JSON.stringify(
       createBuildInfo(fileURLToPath(new URL('./package.json', import.meta.url))),

@@ -62,15 +62,26 @@ The browser generates its launch splash screen from the PWA manifest's app name,
 background color. The UI uses system fonts so the app does not fetch fonts from a third
 party.
 
-## Local data foundation
+## Resume library and local data
 
 Client data is modeled in `client/src/data/` and stored only in IndexedDB. The versioned
 database has typed repositories for resumes, jobs, comparison runs, usage, and app settings.
 Its data service includes JSON-compatible import/export (resume file bytes are base64 encoded)
 and an atomic delete-all operation. Exports contain sensitive resume files and report data;
 store them as carefully as the original documents. These services establish the persistence
-layer; the PWA screens are not connected to them yet. Local browser storage is not a substitute
-for a backup.
+layer, and the Resume library screen uses it to upload, rename, choose a default, inspect/edit
+extracted text, and delete resumes.
+
+PDF, DOCX, and PPTX files are parsed in the browser; PDF.js runs in a Web Worker, and the
+Office ZIP/XML parsers use Web Workers to keep the interface responsive. Uploads are limited
+to 15 MB, 500 PDF pages, 2,000 archive entries, 100 MB expanded Office content, and 500,000
+extracted characters. Image-only/scanned resumes that have no embedded text show a parse
+message; OCR is not included. Parsing requires no API or network request. The parser
+dependencies are PDF.js (Apache-2.0), fflate (MIT), and fast-xml-parser (MIT). Their worker
+assets are included in the offline app cache.
+
+IndexedDB is scoped to the current browser profile and device. Local browser storage is not a
+substitute for a backup.
 
 ## Chrome extension
 

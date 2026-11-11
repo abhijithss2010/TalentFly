@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DiagnosticsPage } from './DiagnosticsPage';
+import { ResumeLibrary } from './resumes/ResumeLibrary';
 
 type PageId = 'dashboard' | 'resumes' | 'history' | 'settings' | 'diagnostics';
 
@@ -58,7 +59,13 @@ function EmptyState({
   );
 }
 
-function Dashboard({ onNavigate }: { onNavigate: (page: PageId) => void }) {
+function Dashboard({
+  onNavigate,
+  resumeCount,
+}: {
+  onNavigate: (page: PageId) => void;
+  resumeCount: number | null;
+}) {
   return (
     <>
       <section className="welcome-panel">
@@ -88,7 +95,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: PageId) => void }) {
             R
           </span>
           <p className="summary-label">Resumes saved</p>
-          <p className="summary-value">—</p>
+          <p className="summary-value">{resumeCount ?? '—'}</p>
           <button className="text-button" onClick={() => onNavigate('resumes')}>
             Open library <span aria-hidden="true">→</span>
           </button>
@@ -143,6 +150,7 @@ export function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const [pwaError, setPwaError] = useState<string | null>(null);
+  const [resumeCount, setResumeCount] = useState<number | null>(null);
 
   const navigateTo = (nextPage: PageId) => {
     if (window.location.hash !== `#${nextPage}`) {
@@ -200,7 +208,7 @@ export function App() {
                 {item.icon}
               </span>
               <span>{item.label}</span>
-              {item.id === 'resumes' && <span className="nav-count">0</span>}
+              {item.id === 'resumes' && <span className="nav-count">{resumeCount ?? '—'}</span>}
             </a>
           ))}
         </nav>
@@ -287,15 +295,10 @@ export function App() {
             </span>
           </div>
 
-          {page === 'dashboard' && <Dashboard onNavigate={navigateTo} />}
-          {page === 'resumes' && (
-            <EmptyState
-              eyebrow="YOUR LIBRARY"
-              title="Your next chapter starts here."
-              description="Add your resumes to keep tailored versions organized in one private workspace. File uploads are coming in the next step."
-              icon="R"
-            />
+          {page === 'dashboard' && (
+            <Dashboard onNavigate={navigateTo} resumeCount={resumeCount} />
           )}
+          {page === 'resumes' && <ResumeLibrary onCountChange={setResumeCount} />}
           {page === 'history' && (
             <EmptyState
               eyebrow="YOUR PROGRESS"

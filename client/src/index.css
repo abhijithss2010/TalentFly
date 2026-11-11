@@ -641,6 +641,305 @@ h1 {
   font-size: 21px;
 }
 
+.resume-library {
+  display: grid;
+  gap: 12px;
+}
+
+.resume-library-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 23px 25px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.resume-library-heading .eyebrow {
+  margin-bottom: 8px;
+}
+
+.resume-library-heading h2 {
+  margin: 0 0 7px;
+  font-size: 19px;
+}
+
+.resume-library-heading .muted-copy {
+  max-width: 560px;
+}
+
+.upload-button {
+  position: relative;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.upload-button:focus-within {
+  outline: 3px solid #9a8bea;
+  outline-offset: 3px;
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.button-disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.resume-storage-note {
+  margin: 0 2px 3px;
+  color: #8a92a5;
+  font-size: 10px;
+}
+
+.resume-feedback {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.resume-feedback-error {
+  border: 1px solid #f1d8d8;
+  background: #fff8f8;
+  color: #9c4545;
+}
+
+.resume-feedback-success {
+  border: 1px solid #d6ece4;
+  background: #f5fbf8;
+  color: #4b816f;
+}
+
+.resume-loading,
+.resume-empty {
+  display: grid;
+  min-height: 245px;
+  align-content: center;
+  justify-items: center;
+  padding: 28px;
+  border: 1px dashed #dfe1ea;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 72%);
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+}
+
+.resume-empty h3 {
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.resume-empty p {
+  margin: 0 0 7px;
+  line-height: 1.6;
+}
+
+.resume-empty .muted-copy {
+  font-size: 11px;
+}
+
+.resume-empty-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 13px;
+  place-items: center;
+  border-radius: 13px;
+  background: #f0effb;
+  color: #7162c7;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.resume-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resume-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.resume-card-main,
+.resume-name-row,
+.resume-actions {
+  display: flex;
+  align-items: center;
+}
+
+.resume-card-main {
+  gap: 12px;
+  min-width: 0;
+}
+
+.resume-file-icon {
+  display: grid;
+  width: 41px;
+  height: 45px;
+  flex: 0 0 41px;
+  place-items: center;
+  border: 1px solid #e7e4f6;
+  border-radius: 9px;
+  background: #f8f7ff;
+  color: #7162c7;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.resume-card-info {
+  min-width: 0;
+}
+
+.resume-name-row {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.resume-name-row h3 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.resume-card-info p {
+  overflow: hidden;
+  margin: 0;
+  color: #8991a5;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.default-resume-badge {
+  padding: 4px 7px;
+  border-radius: 20px;
+  background: #f0effb;
+  color: #6254b2;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.resume-actions {
+  flex-wrap: wrap;
+  gap: 10px 19px;
+  padding-left: 53px;
+}
+
+.text-button:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.text-button-danger {
+  color: #a64b51;
+}
+
+.resume-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px 12px;
+  padding-left: 53px;
+  color: #69738c;
+  font-size: 11px;
+}
+
+.resume-edit-form input {
+  min-width: min(250px, 100%);
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid #dfe1ea;
+  border-radius: 7px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.resume-delete-confirm,
+.resume-text-editor {
+  display: grid;
+  gap: 10px;
+  margin-left: 53px;
+  padding: 14px;
+  border-radius: 9px;
+  background: #fafaff;
+  color: #68728b;
+  font-size: 11px;
+}
+
+.resume-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  border: 1px solid #f0e2e2;
+  background: #fffafa;
+}
+
+.resume-delete-confirm p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.resume-text-editor label {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.resume-text-editor textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  padding: 11px;
+  border: 1px solid #dfe1ea;
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.button-secondary {
+  width: fit-content;
+  border: 1px solid #e2dfef;
+  background: white;
+  color: #5e51a6;
+}
+
+.resume-text-editor textarea:focus-visible,
+.resume-edit-form input:focus-visible {
+  outline: 3px solid #9a8bea;
+  outline-offset: 2px;
+}
+
 .muted-copy {
   max-width: 430px;
   margin-bottom: 0;
@@ -997,6 +1296,29 @@ h1 {
   .empty-state {
     min-height: 330px;
     padding: 28px 19px;
+  }
+
+  .resume-library-heading {
+    display: grid;
+    padding: 18px;
+  }
+
+  .resume-library-heading .upload-button {
+    width: fit-content;
+  }
+
+  .resume-card {
+    padding: 15px;
+  }
+
+  .resume-actions,
+  .resume-edit-form {
+    padding-left: 0;
+  }
+
+  .resume-delete-confirm,
+  .resume-text-editor {
+    margin-left: 0;
   }
 
   .diagnostics-grid {
