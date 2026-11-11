@@ -214,6 +214,7 @@ describe('captured job inbox', () => {
     sendFromExtension(source, start);
 
     await screen.findByText('received', { selector: '.run-status' });
+    expect(await screen.findByRole('button', { name: 'Review and send for comparison' })).toBeTruthy();
     expect(await services.runs.getAll()).toHaveLength(1);
     const savedJobs = (await services.jobs.getAll()).filter(
       (saved) => saved.captureMessageId === 'start-message-1',

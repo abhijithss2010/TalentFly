@@ -12,6 +12,7 @@ import type {
   ExportedResumeRecord,
   JobRecord,
   LocalDataExport,
+  ProviderId,
   ResumeRecord,
   StoredRecord,
   UsageRecord,
@@ -22,6 +23,12 @@ export interface EntityRepository<T extends StoredRecord> {
   getAll(): Promise<T[]>;
   save(record: T): Promise<void>;
   delete(id: string): Promise<void>;
+}
+
+/** Extra data saved together with a status change, in the same transaction. */
+export interface RunTransitionDetails {
+  provider?: ProviderId;
+  result?: Record<string, unknown>;
 }
 
 export interface LocalDataServices {
@@ -42,6 +49,7 @@ export interface LocalDataServices {
     runId: string,
     status: ComparisonRunRecord['status'],
     error?: string,
+    details?: RunTransitionDetails,
   ): Promise<ComparisonRunRecord>;
   exportData(): Promise<LocalDataExport>;
   importData(data: unknown): Promise<void>;
@@ -303,7 +311,8 @@ function assertRunTransition(
     received: ['analysing', 'failed'],
     analysing: ['done', 'failed'],
     done: [],
-    failed: [],
+    // A failed run may be retried; a finished (done) run is final.
+    failed: ['received'],
   };
   if (current === next) {
     return;
@@ -458,7 +467,7 @@ export async function createLocalDataServices(options?: {
         throw error;
       }
     },
-    async transitionRun(runId, status, errorMessage) {
+    async transitionRun(runId, status, errorMessage, details) {
       const transaction = database.transaction('runs', 'readwrite');
       const completed = transactionComplete(transaction);
       const store = transaction.objectStore('runs');
@@ -472,6 +481,8 @@ export async function createLocalDataServices(options?: {
           ...current,
           status,
           error: status === 'failed' ? errorMessage : undefined,
+          provider: details?.provider ?? current.provider,
+          result: details?.result ?? current.result,
           updatedAt: new Date().toISOString(),
         };
         await requestResult(store.put(updated));

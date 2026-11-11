@@ -10,6 +10,9 @@ import {
   type LocalDataServices,
 } from '../data/local-data-service';
 import type { ComparisonRunRecord, JobRecord, ResumeRecord } from '../data/models';
+import { RunPanel } from '../comparison/RunPanel';
+import type { CredentialVault } from '../providers/credential-vault';
+import type { ProviderRegistry } from '../providers/provider-adapter';
 import { validateExtensionWindowMessage } from '../services/extension-protocol';
 import {
   ExtensionPortClient,
@@ -19,6 +22,8 @@ import {
 interface CapturedJobInboxProps {
   extensionId: string;
   serviceFactory?: typeof createLocalDataServices;
+  providerRegistry?: ProviderRegistry;
+  createVault?: (services: LocalDataServices) => CredentialVault;
 }
 
 interface PendingCapture {
@@ -67,6 +72,8 @@ function createJobRecord(messageId: string, job: CapturedJob): JobRecord {
 export function CapturedJobInbox({
   extensionId,
   serviceFactory = createLocalDataServices,
+  providerRegistry,
+  createVault,
 }: CapturedJobInboxProps) {
   const servicesRef = useRef<LocalDataServices | null>(null);
   const receivedMessageIds = useRef(new Set<string>());
@@ -525,7 +532,6 @@ export function CapturedJobInbox({
                 <h4>{jobs.find((job) => job.id === deepLinkedRun.jobId)?.title ?? 'Saved job'}</h4>
                 <p>
                   Run {deepLinkedRun.id} is saved with status <strong>{deepLinkedRun.status}</strong>.
-                  The analysis step is not available yet.
                 </p>
               </article>
             )}
@@ -542,6 +548,16 @@ export function CapturedJobInbox({
                     <span>{jobs.find((job) => job.id === run.jobId)?.title ?? 'Saved job'}</span>
                     <span className={`run-status run-status-${run.status}`}>{run.status}</span>
                     {run.error && <span role="alert">{run.error}</span>}
+                    {servicesRef.current && (
+                      <RunPanel
+                        services={servicesRef.current}
+                        run={run}
+                        job={jobs.find((job) => job.id === run.jobId)}
+                        registry={providerRegistry}
+                        createVault={createVault}
+                        onChanged={() => void refresh()}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>

@@ -51,6 +51,25 @@ export async function compareResumeToJob(input: {
   };
 }
 
+/** Resolves the provider and model chosen in settings, or explains what is missing. */
+export function resolveProviderSelection(
+  settings: Pick<AppSettingsRecord, 'preferredProvider' | 'providerModels'>,
+  registry: ProviderRegistry,
+): { providerId: ProviderId; adapter: ProviderAdapter; model: string } {
+  const providerId = settings.preferredProvider;
+  if (!providerId) {
+    throw new Error('Choose a comparison provider in Provider settings first.');
+  }
+  const adapter = registry.get(providerId);
+  const model = settings.providerModels?.[providerId] ?? adapter.defaultModel;
+  if (!adapter.models.some((candidate) => candidate.id === model)) {
+    throw new Error(
+      `The selected ${adapter.name} model is no longer available. Choose a model in Provider settings.`,
+    );
+  }
+  return { providerId, adapter, model };
+}
+
 /**
  * Runs a comparison with the provider and model chosen in settings, using that provider's
  * encrypted API key. The provider must have been unlocked first.
@@ -64,17 +83,7 @@ export async function runConfiguredComparison(input: {
   signal?: AbortSignal;
 }): Promise<ComparisonResult> {
   const { settings, registry, vault, job, resume, signal } = input;
-  const providerId = settings.preferredProvider;
-  if (!providerId) {
-    throw new Error('Choose a comparison provider in Provider settings first.');
-  }
-  const adapter = registry.get(providerId);
-  const model = settings.providerModels?.[providerId] ?? adapter.defaultModel;
-  if (!adapter.models.some((candidate) => candidate.id === model)) {
-    throw new Error(
-      `The selected ${adapter.name} model is no longer available. Choose a model in Provider settings.`,
-    );
-  }
+  const { providerId, adapter, model } = resolveProviderSelection(settings, registry);
 
   const prompt = buildComparisonPrompt(job, resume);
   return vault.withApiKey(providerId, (apiKey) =>
